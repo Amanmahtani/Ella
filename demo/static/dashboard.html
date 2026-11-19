@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Ella — Dashboard</title>
+<title>Ella — Clinic Dashboard</title>
 <style>
   :root {
     --bg:#0c0c0f; --bg2:#16161b; --cream:#f6f4ee; --panel:#ffffff; --ink:#15151a;
@@ -14,35 +14,40 @@
   body { margin:0; color:var(--cream);
     background:radial-gradient(1200px 500px at 50% -10%, #20202a 0%, transparent 60%), linear-gradient(180deg,var(--bg),#090909);
     background-attachment:fixed; min-height:100vh;
-    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; padding:0 16px 48px; }
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; padding:0 14px 44px; }
   .wrap { max-width:860px; margin:0 auto; }
 
-  .topbar { display:flex; align-items:center; gap:12px; padding:18px 0 6px; }
+  .topbar { display:flex; align-items:center; gap:12px; padding:16px 0 4px; flex-wrap:wrap; }
   .topbar .av { width:40px; height:40px; border-radius:50%; object-fit:cover; border:2px solid var(--cream); }
-  .topbar h1 { font-size:19px; margin:0; flex:1; }
+  .topbar h1 { font-size:18px; margin:0; flex:1; min-width:120px; }
   .topbar h1 small { color:var(--muted); font-weight:500; font-size:13px; display:block; }
   .nav a { color:var(--cream); text-decoration:none; font-size:14px; font-weight:600;
     border:1px solid var(--line-dk); padding:8px 13px; border-radius:10px; margin-left:8px; }
   .nav a.pri { background:var(--cream); color:var(--ink); border-color:var(--cream); }
 
-  .tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:18px 0 0; }
+  .clinicbar { display:flex; align-items:center; gap:10px; margin:14px 0 0; }
+  .clinicbar select { flex:1; background:rgba(255,255,255,.06); border:1px solid var(--line-dk); color:var(--cream);
+    padding:12px 13px; border-radius:12px; font-size:15px; -webkit-appearance:none; appearance:none; font-weight:600; }
+  .vbadge { font-size:11px; font-weight:700; color:#1f7a50; background:rgba(76,195,138,.16); padding:5px 10px; border-radius:20px; white-space:nowrap; }
+
+  .tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:14px 0 0; }
   @media (max-width:640px){ .tiles { grid-template-columns:repeat(2,1fr); } }
   .tile { background:rgba(255,255,255,.05); border:1px solid var(--line-dk); border-radius:14px; padding:16px; }
-  .tile .n { font-size:30px; font-weight:800; line-height:1; }
+  .tile .n { font-size:28px; font-weight:800; line-height:1; }
   .tile .l { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; margin-top:7px; }
   .tile.gold .n { color:var(--gold); }
 
-  .meter { margin:16px 0 0; background:rgba(255,255,255,.05); border:1px solid var(--line-dk); border-radius:14px; padding:16px; }
-  .meter .row { display:flex; justify-content:space-between; align-items:baseline; }
+  .meter { margin:12px 0 0; background:rgba(255,255,255,.05); border:1px solid var(--line-dk); border-radius:14px; padding:16px; }
+  .meter .row { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
   .meter .lab { color:var(--muted); font-size:13px; }
   .meter .val { font-size:20px; font-weight:800; color:var(--ok); }
   .meter .bar { height:10px; background:var(--line-dk); border-radius:6px; margin-top:10px; overflow:hidden; }
-  .meter .bar > span { display:block; height:100%; background:linear-gradient(90deg,var(--gold),var(--ok)); }
+  .meter .bar > span { display:block; height:100%; background:linear-gradient(90deg,var(--gold),var(--ok)); transition:width .4s; }
 
-  .card { background:var(--panel); color:var(--ink); border-radius:16px; padding:18px; margin:16px 0 0; }
+  .card { background:var(--panel); color:var(--ink); border-radius:16px; padding:18px; margin:14px 0 0; }
   .card h2 { font-size:15px; margin:0 0 12px; display:flex; align-items:center; gap:8px; }
   .card h2 .paw { width:15px; height:15px; color:var(--gold); }
-  .search { width:100%; border:1px solid var(--line); border-radius:10px; padding:10px 12px; font-size:14px; margin:0 0 12px; }
+  .search { width:100%; border:1px solid var(--line); border-radius:10px; padding:11px 12px; font-size:15px; margin:0 0 12px; }
 
   table { width:100%; border-collapse:collapse; font-size:14px; }
   th { text-align:left; color:var(--muted2); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.03em; padding:0 8px 8px; }
@@ -58,6 +63,16 @@
     border-radius:20px; padding:7px 13px; font-size:13px; margin:0 8px 8px 0; }
   .pill .paw { width:13px; height:13px; color:var(--ink); }
   .chip { font-size:11px; color:var(--muted2); }
+
+  /* mobile-first: turn the scans table into stacked cards on narrow screens */
+  @media (max-width:600px) {
+    table, thead, tbody, tr, td { display:block; }
+    thead { display:none; }
+    tr { border:1px solid var(--line); border-radius:12px; margin-bottom:10px; padding:4px 12px; }
+    td { border:0; padding:8px 0; display:flex; justify-content:space-between; align-items:center; gap:14px; }
+    td + td { border-top:1px solid var(--line); }
+    td::before { content:attr(data-label); color:var(--muted2); font-size:12px; text-transform:uppercase; letter-spacing:.03em; }
+  }
 </style>
 </head>
 <body>
@@ -72,19 +87,24 @@
 <div class="wrap">
   <div class="topbar">
     <img class="av" src="/static/ella.jpg" alt="Ella">
-    <h1>Ella<small>Nose-print dashboard</small></h1>
+    <h1>Ella<small>Vet clinic dashboard</small></h1>
     <div class="nav"><a href="/">Home</a><a class="pri" href="/scan">Scan</a></div>
+  </div>
+
+  <div class="clinicbar">
+    <select id="clinicSel"><option value="">All clinics</option></select>
+    <span class="vbadge" id="vbadge" style="display:none">✓ Verified</span>
   </div>
 
   <div class="tiles">
     <div class="tile"><div class="n" id="tPets">—</div><div class="l">Registered pets</div></div>
-    <div class="tile"><div class="n" id="tScans">—</div><div class="l">Total scans</div></div>
-    <div class="tile gold"><div class="n" id="tMatches">—</div><div class="l">Matches</div></div>
+    <div class="tile gold"><div class="n" id="tMatches">—</div><div class="l">Pets found</div></div>
+    <div class="tile"><div class="n" id="tEnroll">—</div><div class="l">Enrollments</div></div>
     <div class="tile"><div class="n" id="tToday">—</div><div class="l">Scans today</div></div>
   </div>
 
   <div class="meter">
-    <div class="row"><span class="lab">Match rate (identify scans that found a pet)</span><span class="val" id="mRate">—</span></div>
+    <div class="row"><span class="lab">Overall match rate (system-wide)</span><span class="val" id="mRate">—</span></div>
     <div class="bar"><span id="mBar" style="width:0%"></span></div>
   </div>
 
@@ -105,6 +125,10 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
+let clinic = "";          // "" = all clinics
+let allPets = [];
+let clinicsById = {};
+
 function ago(iso) {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime())/1000);
   if (s < 60) return Math.floor(s)+"s ago";
@@ -115,33 +139,57 @@ function ago(iso) {
 const badge = (o) => o==="match" ? '<span class="badge b-match">match</span>'
   : o==="no_match" ? '<span class="badge b-no">no match</span>'
   : '<span class="badge b-ok">'+o+'</span>';
+const qs = () => clinic ? ("?clinic=" + encodeURIComponent(clinic)) : "";
 
-fetch("/api/stats").then(r=>r.json()).then(d=>{
-  $("tPets").textContent=d.pets; $("tScans").textContent=d.scans;
-  $("tMatches").textContent=d.matches; $("tToday").textContent=d.today;
-  $("mRate").textContent=d.match_rate+"%"; $("mBar").style.width=d.match_rate+"%";
-}).catch(()=>{});
-
-fetch("/api/scans").then(r=>r.json()).then(d=>{
-  const rows = d.scans;
-  if (!rows.length) { $("scanRows").innerHTML='<tr><td class="empty" colspan="5">No scans yet.</td></tr>'; return; }
-  $("scanRows").innerHTML = rows.map(s => {
-    const pct = s.similarity!=null ? Math.round(s.similarity*100)+"%" : "—";
-    const who = s.name ? `${s.name} <span class="uid">${s.ella_uid||""}</span>` : '<span class="uid">—</span>';
-    return `<tr><td>${who}</td><td>${s.action}</td><td>${badge(s.outcome)}</td><td>${pct}</td><td class="ago">${ago(s.at)}</td></tr>`;
-  }).join("");
-}).catch(()=>{});
-
-let allPets = [];
+function loadStats() {
+  fetch("/api/stats" + qs()).then(r=>r.json()).then(d=>{
+    $("tPets").textContent=d.pets; $("tMatches").textContent=d.matches;
+    $("tEnroll").textContent=d.enrollments; $("tToday").textContent=d.today;
+    $("mRate").textContent=d.match_rate+"%"; $("mBar").style.width=d.match_rate+"%";
+  }).catch(()=>{});
+}
+function loadScans() {
+  fetch("/api/scans" + qs()).then(r=>r.json()).then(d=>{
+    const rows = d.scans;
+    if (!rows.length) { $("scanRows").innerHTML='<tr><td class="empty">No scans yet for this clinic.</td></tr>'; return; }
+    $("scanRows").innerHTML = rows.map(s => {
+      const pct = s.similarity!=null ? Math.round(s.similarity*100)+"%" : "—";
+      const who = s.name ? `${s.name} <span class="uid">${s.ella_uid||""}</span>` : '<span class="uid">unknown</span>';
+      return `<tr>
+        <td data-label="Pet">${who}</td>
+        <td data-label="Action">${s.action}</td>
+        <td data-label="Result">${badge(s.outcome)}</td>
+        <td data-label="Match">${pct}</td>
+        <td data-label="When" class="ago">${ago(s.at)}</td></tr>`;
+    }).join("");
+  }).catch(()=>{});
+}
 function renderPets(q="") {
   const list = allPets.filter(p => (p.name+" "+p.ella_uid).toLowerCase().includes(q.toLowerCase()));
   $("registry").innerHTML = list.length ? list.map(p =>
     `<span class="pill"><svg class="paw"><use href="#paw"/></svg><b>${p.name}</b>
       <span class="uid">${p.ella_uid}</span></span>`).join("")
-    : '<span class="chip">No pets match.</span>';
+    : '<span class="chip">No pets yet.</span>';
 }
-fetch("/api/pets").then(r=>r.json()).then(d=>{ allPets=d.pets; renderPets(); }).catch(()=>{});
+function loadPets() {
+  fetch("/api/pets" + qs()).then(r=>r.json()).then(d=>{ allPets=d.pets; renderPets($("search").value); }).catch(()=>{});
+}
+function loadAll() { loadStats(); loadScans(); loadPets();
+  const c = clinicsById[clinic];
+  $("vbadge").style.display = (c && c.verified) ? "" : "none";
+}
+
+// clinic selector
+fetch("/api/clinics").then(r=>r.json()).then(d=>{
+  const sel = $("clinicSel");
+  d.clinics.forEach(c => { clinicsById[c.id]=c;
+    const o=document.createElement("option"); o.value=c.id;
+    o.textContent = c.name + (c.city ? " · "+c.city : "") + "  ("+c.pets+")"; sel.appendChild(o); });
+}).catch(()=>{});
+$("clinicSel").addEventListener("change", e => { clinic = e.target.value; loadAll(); });
 $("search").addEventListener("input", e => renderPets(e.target.value));
+
+loadAll();
 </script>
 </body>
 </html>

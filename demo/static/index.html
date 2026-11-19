@@ -93,6 +93,9 @@
   .namebar input { width:100%; background:var(--panel); border:1px solid var(--line);
     color:var(--ink); padding:12px 14px; border-radius:12px; font-size:15px; }
   .namebar input::placeholder { color:var(--muted2); }
+  .reg-row { display:flex; gap:10px; margin-top:10px; }
+  .reg-row select { flex:1; background:var(--panel); border:1px solid var(--line); color:var(--ink);
+    padding:12px; border-radius:12px; font-size:15px; -webkit-appearance:none; appearance:none; }
 
   .cap { max-width:680px; margin:12px auto 0; display:flex; gap:10px; }
   .cap button { flex:1; border:0; border-radius:13px; padding:15px; font-size:16px; font-weight:800; cursor:pointer;
@@ -181,6 +184,10 @@
 
 <div class="namebar" id="namebar">
   <input type="text" id="petName" placeholder="Pet's name (e.g. Ella)">
+  <div class="reg-row">
+    <select id="petSpecies"><option value="cat">Cat</option><option value="dog">Dog</option></select>
+    <select id="petClinic"><option value="">No clinic</option></select>
+  </div>
 </div>
 
 <div class="cap">
@@ -363,7 +370,8 @@ async function sendEnroll(blob) {
   const name = $("petName").value.trim(), out = $("result");
   if (!name) { out.innerHTML = '<span class="bad">Enter a name first (Register mode).</span>'; return; }
   const fd = new FormData(); fd.append("file", blob, "scan.jpg"); fd.append("name", name);
-  fd.append("species","dog"); fd.append("region","BLR");
+  fd.append("species", $("petSpecies").value); fd.append("region","BLR");
+  fd.append("clinic", $("petClinic").value);
   try {
     const d = await (await fetch("/api/enroll",{method:"POST",body:fd})).json();
     out.innerHTML = d.ok
@@ -392,6 +400,12 @@ async function loadPets() {
       || '<span style="color:var(--muted)">None yet.</span>';
   } catch (e) {}
 }
+
+// populate clinic dropdown for registration
+fetch("/api/clinics").then(r=>r.json()).then(d=>{
+  const sel = $("petClinic");
+  d.clinics.forEach(c => { const o=document.createElement("option"); o.value=c.id; o.textContent=c.name; sel.appendChild(o); });
+}).catch(()=>{});
 
 setMode("identify"); startCamera(); loadPets();
 </script>

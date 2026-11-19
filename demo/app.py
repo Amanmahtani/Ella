@@ -53,6 +53,29 @@ def _embed_upload(upload: UploadFile) -> np.ndarray:
         os.unlink(path)
 
 
+@app.on_event("startup")
+def seed_clinics() -> None:
+    """Seed demo vet clinics on first boot and attach any unassigned pets, so the
+    clinic dashboard has data to show. Safe to run every start."""
+    try:
+        conn = db.connect(role="service_role")
+        with conn.cursor() as cur:
+            cur.execute("select count(*) from organizations")
+            if cur.fetchone()[0] == 0:
+                cur.execute("""
+                    insert into organizations (name, org_type, city, state, is_verified) values
+                      ('Adv3nture Vet Clinic', 'vet_clinic', 'Bangalore', 'KA', true),
+                      ('Indiranagar Pet Hospital', 'vet_clinic', 'Bangalore', 'KA', true)
+                """)
+            cur.execute("select id from organizations order by created_at, name limit 1")
+            first = cur.fetchone()[0]
+            cur.execute("update pets set organization_id=%s where organization_id is null", (first,))
+        conn.commit()
+        conn.close()
+    except Exception as e:  # noqa: BLE001
+        print("[seed_clinics] skipped:", e)
+
+
 def _page(name: str) -> FileResponse:
     return FileResponse(os.path.join(HERE, "static", name))
 
@@ -73,28 +96,44 @@ def dashboard() -> FileResponse:
 
 
 @app.get("/api/stats")
-def stats() -> JSONResponse:
+def stats(clinic: str | None = None) -> JSONResponse:
     conn = db.connect(role="service_role")
     with conn.cursor() as cur:
-        cur.execute("""
-            select
-              (select count(*) from pets),
-              (select count(*) from verification_logs where action='identify'),
-              (select count(*) from verification_logs where action='identify' and outcome='match'),
-              (select count(*) from verification_logs where action='enroll'),
-              (select count(*) from verification_logs where created_at::date = now()::date)
-        """)
-        pets, scans_, matches, enrollments, today = cur.fetchone()
+        # Overall match rate is a system-wide figure (no-match scans have no pet
+        # and so cannot be attributed to a clinic).
+        cur.execute("select count(*), count(*) filter (where outcome='match') "
+                    "from verification_logs where action='identify'")
+        g_scans, g_matches = cur.fetchone()
+        if clinic:
+            cur.execute("""
+                select
+                  (select count(*) from pets where organization_id=%(c)s::uuid),
+                  (select count(*) from verification_logs v join pets p on p.id=v.pet_id
+                     where v.action='identify' and v.outcome='match' and p.organization_id=%(c)s::uuid),
+                  (select count(*) from verification_logs v join pets p on p.id=v.pet_id
+                     where v.action='enroll' and p.organization_id=%(c)s::uuid),
+                  (select count(*) from verification_logs v join pets p on p.id=v.pet_id
+                     where p.organization_id=%(c)s::uuid and v.created_at::date=now()::date)
+            """, {"c": clinic})
+        else:
+            cur.execute("""
+                select
+                  (select count(*) from pets),
+                  (select count(*) from verification_logs where action='identify' and outcome='match'),
+                  (select count(*) from verification_logs where action='enroll'),
+                  (select count(*) from verification_logs where created_at::date=now()::date)
+            """)
+        pets, found, enrollments, today = cur.fetchone()
     conn.close()
-    rate = round(100.0 * matches / scans_, 1) if scans_ else 0.0
+    rate = round(100.0 * g_matches / g_scans, 1) if g_scans else 0.0
     return JSONResponse({
-        "pets": pets, "scans": scans_, "matches": matches,
-        "enrollments": enrollments, "today": today, "match_rate": rate,
+        "pets": pets, "matches": found, "enrollments": enrollments,
+        "today": today, "scans": g_scans, "match_rate": rate,
     })
 
 
 @app.get("/api/scans")
-def scans() -> JSONResponse:
+def scans(clinic: str | None = None) -> JSONResponse:
     conn = db.connect(role="service_role")
     with conn.cursor() as cur:
         cur.execute("""
@@ -102,9 +141,10 @@ def scans() -> JSONResponse:
             from verification_logs v
             left join pets p on p.id = v.pet_id
             where v.action in ('identify','lookup','enroll')
+              and (%(c)s::uuid is null or p.organization_id = %(c)s::uuid)
             order by v.created_at desc
             limit 25
-        """)
+        """, {"c": clinic})
         rows = [
             {
                 "action": r[0], "outcome": r[1],
@@ -117,22 +157,39 @@ def scans() -> JSONResponse:
     return JSONResponse({"scans": rows})
 
 
-@app.get("/api/pets")
-def list_pets() -> JSONResponse:
+@app.get("/api/clinics")
+def clinics() -> JSONResponse:
     conn = db.connect(role="service_role")
     with conn.cursor() as cur:
-        cur.execute("select count(*) from pets")
-        count = cur.fetchone()[0]
+        cur.execute("""
+            select o.id, o.name, coalesce(o.city,''), o.is_verified,
+                   (select count(*) from pets p where p.organization_id = o.id)
+            from organizations o order by o.name
+        """)
+        rows = [
+            {"id": str(r[0]), "name": r[1], "city": r[2], "verified": r[3], "pets": r[4]}
+            for r in cur.fetchall()
+        ]
+    conn.close()
+    return JSONResponse({"clinics": rows})
+
+
+@app.get("/api/pets")
+def list_pets(clinic: str | None = None) -> JSONResponse:
+    conn = db.connect(role="service_role")
+    with conn.cursor() as cur:
         cur.execute(
-            "select name, ella_uid, species, coalesce(breed,'') "
-            "from pets order by created_at desc limit 50"
+            "select name, ella_uid, species, coalesce(breed,'') from pets "
+            "where (%(c)s::uuid is null or organization_id = %(c)s::uuid) "
+            "order by created_at desc limit 100",
+            {"c": clinic},
         )
         pets = [
             {"name": r[0], "ella_uid": r[1], "species": r[2], "breed": r[3]}
             for r in cur.fetchall()
         ]
     conn.close()
-    return JSONResponse({"count": count, "pets": pets})
+    return JSONResponse({"count": len(pets), "pets": pets})
 
 
 @app.post("/api/enroll")
@@ -143,6 +200,7 @@ async def enroll(
     breed: str = Form(""),
     region: str = Form("BLR"),
     microchip: str = Form(""),
+    clinic: str = Form(""),
 ) -> JSONResponse:
     try:
         vec = _embed_upload(file)
@@ -158,6 +216,7 @@ async def enroll(
             microchip_number=microchip or None,
             region=region,
             frame_count=1,
+            organization_id=clinic or None,
         )
         conn.close()
         return JSONResponse({

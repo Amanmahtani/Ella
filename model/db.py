@@ -40,6 +40,7 @@ def enroll_pet(
     region: str = "BLR",
     frame_count: int | None = None,
     quality_score: float | None = None,
+    organization_id: str | None = None,
 ) -> dict:
     sql = """
         select pet_id, ella_uid, embedding_id, has_microchip
@@ -56,7 +57,8 @@ def enroll_pet(
             p_owner_email => %(owner_email)s,
             p_region => %(region)s,
             p_frame_count => %(frame_count)s,
-            p_quality_score => %(quality_score)s
+            p_quality_score => %(quality_score)s,
+            p_organization_id => %(organization_id)s::uuid
         )
     """
     with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
@@ -101,5 +103,6 @@ def locals_to_params(d: dict) -> dict:
         "name", "species", "modality", "embedding", "model_id",
         "microchip_number", "breed", "owner_name", "owner_phone",
         "owner_email", "region", "frame_count", "quality_score",
+        "organization_id",
     }
     return {k: d[k] for k in keys}
