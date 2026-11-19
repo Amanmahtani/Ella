@@ -1,14 +1,15 @@
 # Core ML
 torch>=2.2
-transformers>=4.40
+torchvision>=0.17          # training-time augmentations (colour/blur/rotation)
+transformers>=4.45         # DINOv2 embedder + RT-DETR nose detector
 numpy>=1.24
 pillow>=10.0
 
 # Image handling and preprocessing (LAB + CLAHE)
 opencv-python-headless>=4.9
 
-# Nose detection (optional; falls back to centre crop if weights absent)
-ultralytics>=8.1
+# Nose detection is RT-DETR via transformers (Apache-2.0) — no extra dependency,
+# and no AGPL. Falls back to a centre crop until a detector is trained.
 
 # Database (pgvector via raw SQL, no ORM)
 psycopg[binary]>=3.1

@@ -49,7 +49,7 @@ def main() -> None:
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     processor = AutoImageProcessor.from_pretrained(args.model)
-    ds = NoseDataset(args.data_dir, processor, detect=not args.no_detect)
+    ds = NoseDataset(args.data_dir, processor, detect=not args.no_detect, augment=True)
     dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, num_workers=4, drop_last=True)
     print(f"[train] {len(ds)} images across {ds.num_classes} pets")
 

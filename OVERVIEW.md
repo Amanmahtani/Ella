@@ -112,11 +112,13 @@ distance comparison (cosine similarity) against everything in the database.
 5. **Match** — compare against stored vectors in pgvector by cosine similarity;
    a match must clear a threshold (currently **0.86**).
 
-### The nose detector (also not trained yet)
-- There is a YOLO-based nose detector wrapper and a trainer (`train_detector.py`),
-  but **no detector has been trained**, so today it falls back to a **centre
-  crop** of the photo. A trained detector would tightly crop the actual nose and
-  is one of the biggest accuracy levers.
+### The nose detector (RT-DETR, Apache-2.0; not trained yet)
+- Stage A of a two-stage funnel. The detector is **RT-DETR via transformers**
+  (Apache-2.0, commercially clean — it replaced an AGPL-licensed YOLO), and its
+  only job is to draw a **tight box around the bare nose pad** so the embedder
+  never sees breed, fur colour or background. A trainer exists
+  (`train_detector.py`), but **no detector has been trained**, so today it falls
+  back to a **centre crop**. Training it is one of the biggest accuracy levers.
 
 ### The training pipeline (built, never run)
 - `train.py` + `arcface.py` implement **fine-tuning with ArcFace** (the standard
@@ -165,8 +167,7 @@ has not been trained on noses yet.** That is the honest frontier.
    Storage) instead of a local volume.
 7. **Real lost-and-found alerts** — wire the "Notify owner" relay to actual
    SMS/email so owners are really contacted.
-8. **Swap the AGPL-licensed YOLO** detector for a permissive alternative (or buy a
-   commercial licence) before selling.
+8. ~~Swap the AGPL-licensed YOLO detector~~ — **done**: now RT-DETR (Apache-2.0).
 9. **Scale the model** — once data exists, move from DINOv2-small (384-d) to a
    larger DINOv2 (the schema already supports a 1536-d column) for more accuracy.
 
@@ -180,9 +181,10 @@ has not been trained on noses yet.** That is the honest frontier.
 | DINOv2 (`facebook/dinov2-small`) | Nose embedding (the "brain") | Apache-2.0 | Yes |
 | PyTorch, Hugging Face Transformers | Run the model | Open source | Yes |
 | OpenCV | Image preprocessing | Open source | Yes |
-| YOLO / Ultralytics | Nose detection | **AGPL-3.0** | **Needs care** — copyleft or paid licence |
+| RT-DETR (via transformers) | Nose detection | Apache-2.0 | Yes |
 | FastAPI, Uvicorn | Web server | Open source | Yes |
 | Docker | Packaging / running | Open source | Yes |
 
-The only licensing flag is **YOLO/Ultralytics (AGPL)** — fine for building and
-demoing, but swap or licence it before a commercial launch.
+All components are now commercially clean. (We swapped the earlier
+AGPL-licensed YOLO detector for RT-DETR, Apache-2.0, which also keeps the whole
+ML stack inside one library.)

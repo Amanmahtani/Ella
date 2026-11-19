@@ -28,7 +28,7 @@ change. That is the intended commercial launch model.
 
 ```
 photo ──▶ detect_nose.py ──▶ preprocess.py ──▶ embed.py ──▶ [0.12,-0.44,...]::vector
-         (YOLO crop)         (LAB + CLAHE)      (DINOv2)              │
+        (RT-DETR crop)       (LAB + CLAHE)      (DINOv2)              │
                                                                      ▼
                                           enroll_to_db.py  →  enroll_pet()   (register)
                                           identify.py      →  public_identify()  (find)
@@ -52,29 +52,30 @@ python enroll_to_db.py path/to/ella_nose.jpg \
 python identify.py path/to/found_dog.jpg
 ```
 
-## Nose detector (YOLO)
+## Nose detector (RT-DETR, Apache-2.0)
 
-The detector finds and tightly crops the nasal planum before embedding. Until
-trained weights exist, `detect_nose.py` falls back to a centre crop and warns.
+Stage A of the funnel: find and tightly crop the bare nose pad before embedding,
+so the model can't cheat on breed/fur/background. The detector is RT-DETR via
+`transformers` (Apache-2.0, no extra dependency, no AGPL). Until trained weights
+exist, `detect_nose.py` falls back to a centre crop and warns.
 
 Train it on boxed noses (one class), then it is picked up automatically:
 
 ```bash
-# 1. Lay out labelled data per detector_data.yaml:
+# 1. Lay out labelled data (standard YOLO export from CVAT / Label Studio / Roboflow):
 #      data_detector/images/{train,val}/*.jpg
 #      data_detector/labels/{train,val}/*.txt   (lines: `0 cx cy w h`, normalised)
-#    Roboflow / CVAT / Label Studio all export this format.
 
-# 2. Train (writes weights/nose_yolo.pt)
-python train_detector.py --data detector_data.yaml --epochs 100
+# 2. Fine-tune RT-DETR (writes a checkpoint dir weights/nose_rtdetr)
+python train_detector.py --data-dir data_detector --epochs 50
 
 # 3. Test detection on an image (saves a crop + an annotated preview)
 python detect_nose.py path/to/pet.jpg
 ```
 
-`detect_nose.py` looks for the weights at `weights/nose_yolo.pt`, overridable via
-the `ELLA_NOSE_WEIGHTS` environment variable. Once present, `enroll_to_db.py` and
-`identify.py` crop to the nose automatically with no code change.
+`detect_nose.py` looks for the checkpoint at `weights/nose_rtdetr`, overridable
+via the `ELLA_NOSE_WEIGHTS` environment variable. Once present, `enroll_to_db.py`
+and `identify.py` crop to the nose automatically with no code change.
 
 ## Training (where accuracy comes from)
 
@@ -93,7 +94,6 @@ multi-frame enrolments matter more than any model swap.
 
 - `embed.py`, `preprocess.py`, `db.py`, `enroll_to_db.py`, `identify.py`,
   `dataset.py`, `arcface.py`, `train.py`, `train_detector.py`: real, runnable.
-- `detect_nose.py`: real YOLO wrapper with a detection + crop CLI. With no
+- `detect_nose.py`: real RT-DETR wrapper with a detection + crop CLI. With no
   trained weights yet it falls back to a centre crop and warns. Run
-  `train_detector.py` on boxed noses (or drop in a YOLO nose model at
-  `weights/nose_yolo.pt`) to make it real.
+  `train_detector.py` on boxed noses to produce `weights/nose_rtdetr`.

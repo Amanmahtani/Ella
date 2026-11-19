@@ -1,12 +1,15 @@
-"""Nose detection and cropping.
+"""Nose detection and cropping with RT-DETR (via Hugging Face transformers).
 
-A tight crop of the nasal planum is the single biggest accuracy lever: a stray
-background or a loose crop poisons the embedding. This wraps an Ultralytics YOLO
-detector trained to find the nose.
+This replaces the previous AGPL-licensed YOLO detector. RT-DETR is Apache-2.0 and
+lives in `transformers`, so the whole ML stack stays in one library
+(transformers + PyTorch) with a clean commercial licence.
 
-Scaffold behaviour: if no trained detector weights are present, this falls back
-to a centre crop and prints a warning, so the rest of the pipeline still runs
-end to end. Replace NOSE_WEIGHTS with a trained YOLO nose model to make it real.
+Stage A of the two-stage funnel: find the bounding box of the bare nose pad
+(rhinarium) and crop out everything else. A tight crop is what forces the
+embedding model to look at ridge texture instead of breed, fur colour or
+background. Out of the box RT-DETR only knows COCO classes, not noses, so this
+loads a FINE-TUNED checkpoint (produced by train_detector.py) when present and
+otherwise falls back to a centre crop so the pipeline still runs end to end.
 """
 
 from __future__ import annotations
@@ -16,24 +19,27 @@ import sys
 
 import numpy as np
 
-NOSE_WEIGHTS = os.environ.get("ELLA_NOSE_WEIGHTS", "weights/nose_yolo.pt")
+# A fine-tuned RT-DETR checkpoint saved with save_pretrained() (a directory).
+NOSE_WEIGHTS = os.environ.get("ELLA_NOSE_WEIGHTS", "weights/nose_rtdetr")
 
 _model = None
+_proc = None
 
 
 def _load_model():
-    global _model
+    global _model, _proc
     if _model is not None:
-        return _model
-    if not os.path.exists(NOSE_WEIGHTS):
-        return None
+        return _model, _proc
+    if not os.path.isdir(NOSE_WEIGHTS):
+        return None, None
     try:
-        from ultralytics import YOLO
+        from transformers import AutoImageProcessor, AutoModelForObjectDetection
     except ImportError:
-        print("[detect_nose] ultralytics not installed; using centre crop.", file=sys.stderr)
-        return None
-    _model = YOLO(NOSE_WEIGHTS)
-    return _model
+        print("[detect_nose] transformers not installed; using centre crop.", file=sys.stderr)
+        return None, None
+    _proc = AutoImageProcessor.from_pretrained(NOSE_WEIGHTS)
+    _model = AutoModelForObjectDetection.from_pretrained(NOSE_WEIGHTS).eval()
+    return _model, _proc
 
 
 def _centre_crop(bgr: np.ndarray, frac: float = 0.6) -> np.ndarray:
@@ -44,25 +50,34 @@ def _centre_crop(bgr: np.ndarray, frac: float = 0.6) -> np.ndarray:
     return bgr[cy - half : cy + half, cx - half : cx + half]
 
 
-def detect_box(bgr: np.ndarray, conf: float = 0.25) -> tuple[int, int, int, int] | None:
+def detect_box(bgr: np.ndarray, conf: float = 0.5) -> tuple[int, int, int, int] | None:
     """Return the highest-confidence nose box (x1,y1,x2,y2), or None.
 
-    None means either no detector weights are present or nothing was detected;
-    the caller decides how to fall back.
+    None means no detector weights are present or nothing was found; the caller
+    decides how to fall back.
     """
-    model = _load_model()
+    model, proc = _load_model()
     if model is None:
         return None
-    results = model.predict(bgr, conf=conf, verbose=False)
-    boxes = results[0].boxes
-    if boxes is None or len(boxes) == 0:
+    import cv2
+    import torch
+
+    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    h, w = bgr.shape[:2]
+    inputs = proc(images=rgb, return_tensors="pt")
+    with torch.no_grad():
+        outputs = model(**inputs)
+    res = proc.post_process_object_detection(
+        outputs, target_sizes=[(h, w)], threshold=conf
+    )[0]
+    if len(res["scores"]) == 0:
         return None
-    best = int(np.argmax(boxes.conf.cpu().numpy()))
-    x1, y1, x2, y2 = boxes.xyxy.cpu().numpy()[best].astype(int)
-    return int(x1), int(y1), int(x2), int(y2)
+    i = int(res["scores"].argmax())
+    x1, y1, x2, y2 = (int(v) for v in res["boxes"][i].tolist())
+    return x1, y1, x2, y2
 
 
-def crop_nose(bgr: np.ndarray, pad: float = 0.1, conf: float = 0.25) -> np.ndarray:
+def crop_nose(bgr: np.ndarray, pad: float = 0.1, conf: float = 0.5) -> np.ndarray:
     """Return a cropped BGR image around the detected nose.
 
     Falls back to a centre crop when no detector weights are available or no
@@ -70,7 +85,7 @@ def crop_nose(bgr: np.ndarray, pad: float = 0.1, conf: float = 0.25) -> np.ndarr
     """
     box = detect_box(bgr, conf=conf)
     if box is None:
-        if _load_model() is None:
+        if _load_model()[0] is None:
             print(
                 f"[detect_nose] No detector at {NOSE_WEIGHTS}; falling back to centre crop. "
                 f"Train one with train_detector.py for real accuracy.",
@@ -92,11 +107,13 @@ def crop_nose(bgr: np.ndarray, pad: float = 0.1, conf: float = 0.25) -> np.ndarr
 def _main() -> None:
     import argparse
 
+    import cv2
+
     from preprocess import load_bgr
 
-    ap = argparse.ArgumentParser(description="Test the nose detector on an image.")
+    ap = argparse.ArgumentParser(description="Test the RT-DETR nose detector on an image.")
     ap.add_argument("image")
-    ap.add_argument("--conf", type=float, default=0.25)
+    ap.add_argument("--conf", type=float, default=0.5)
     ap.add_argument("--out-crop", default="nose_crop.jpg")
     ap.add_argument("--out-annotated", default="nose_annotated.jpg")
     args = ap.parse_args()
@@ -105,11 +122,8 @@ def _main() -> None:
     box = detect_box(bgr, conf=args.conf)
     if box is None:
         print("No detection (no weights, or nothing found). "
-              "Centre-crop fallback would be used by the pipeline.")
+              "The pipeline would use the centre-crop fallback.")
         return
-
-    import cv2
-
     x1, y1, x2, y2 = box
     cv2.imwrite(args.out_crop, bgr[y1:y2, x1:x2])
     annotated = bgr.copy()

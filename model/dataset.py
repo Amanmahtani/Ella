@@ -17,7 +17,9 @@ import os
 
 import numpy as np
 import torch
+from PIL import Image
 from torch.utils.data import Dataset
+from torchvision import transforms as T
 
 from detect_nose import crop_nose
 from preprocess import load_bgr, to_model_input
@@ -26,9 +28,19 @@ IMG_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
 
 class NoseDataset(Dataset):
-    def __init__(self, data_dir: str, processor, detect: bool = True):
+    def __init__(self, data_dir: str, processor, detect: bool = True, augment: bool = False):
         self.processor = processor
         self.detect = detect
+        # Augmentation during training so the model learns ridge geometry, not
+        # breed/lighting/colour: jitter colour + brightness/contrast, blur, and
+        # rotate slightly. Same pet under warmer light must still read as the
+        # same pet, so these force invariance to everything but the ridges.
+        self.aug = T.Compose([
+            T.RandomApply([T.ColorJitter(0.35, 0.35, 0.35, 0.06)], p=0.85),
+            T.RandomApply([T.GaussianBlur(3, sigma=(0.1, 1.5))], p=0.3),
+            T.RandomRotation(12),
+            T.RandomHorizontalFlip(0.5),
+        ]) if augment else None
         self.samples: list[tuple[str, int]] = []
         self.classes: list[str] = []
 
@@ -63,6 +75,9 @@ class NoseDataset(Dataset):
         bgr = load_bgr(path)
         if self.detect:
             bgr = crop_nose(bgr)
-        rgb = to_model_input(bgr)
-        pixel_values = self.processor(images=rgb, return_tensors="pt")["pixel_values"][0]
+        rgb = to_model_input(bgr)                 # square RGB uint8
+        img = Image.fromarray(rgb)
+        if self.aug is not None:
+            img = self.aug(img)
+        pixel_values = self.processor(images=img, return_tensors="pt")["pixel_values"][0]
         return pixel_values, torch.tensor(label, dtype=torch.long)
