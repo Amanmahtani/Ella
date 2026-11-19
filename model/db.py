@@ -79,10 +79,10 @@ def public_identify(
         select *
         from public_identify(
             p_embedding => %(embedding)s::vector,
-            p_modality => %(modality)s,
-            p_model_id => %(model_id)s,
-            p_threshold => %(threshold)s,
-            p_k => %(k)s
+            p_modality => %(modality)s::text,
+            p_model_id => %(model_id)s::text,
+            p_threshold => %(threshold)s::numeric,
+            p_k => %(k)s::integer
         )
     """
     with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
