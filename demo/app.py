@@ -53,9 +53,68 @@ def _embed_upload(upload: UploadFile) -> np.ndarray:
         os.unlink(path)
 
 
+def _page(name: str) -> FileResponse:
+    return FileResponse(os.path.join(HERE, "static", name))
+
+
 @app.get("/")
-def index() -> FileResponse:
-    return FileResponse(os.path.join(HERE, "static", "index.html"))
+def landing() -> FileResponse:
+    return _page("landing.html")
+
+
+@app.get("/scan")
+def scan() -> FileResponse:
+    return _page("index.html")
+
+
+@app.get("/dashboard")
+def dashboard() -> FileResponse:
+    return _page("dashboard.html")
+
+
+@app.get("/api/stats")
+def stats() -> JSONResponse:
+    conn = db.connect(role="service_role")
+    with conn.cursor() as cur:
+        cur.execute("""
+            select
+              (select count(*) from pets),
+              (select count(*) from verification_logs where action='identify'),
+              (select count(*) from verification_logs where action='identify' and outcome='match'),
+              (select count(*) from verification_logs where action='enroll'),
+              (select count(*) from verification_logs where created_at::date = now()::date)
+        """)
+        pets, scans_, matches, enrollments, today = cur.fetchone()
+    conn.close()
+    rate = round(100.0 * matches / scans_, 1) if scans_ else 0.0
+    return JSONResponse({
+        "pets": pets, "scans": scans_, "matches": matches,
+        "enrollments": enrollments, "today": today, "match_rate": rate,
+    })
+
+
+@app.get("/api/scans")
+def scans() -> JSONResponse:
+    conn = db.connect(role="service_role")
+    with conn.cursor() as cur:
+        cur.execute("""
+            select v.action, v.outcome, v.similarity, v.created_at, p.name, p.ella_uid
+            from verification_logs v
+            left join pets p on p.id = v.pet_id
+            where v.action in ('identify','lookup','enroll')
+            order by v.created_at desc
+            limit 25
+        """)
+        rows = [
+            {
+                "action": r[0], "outcome": r[1],
+                "similarity": float(r[2]) if r[2] is not None else None,
+                "at": r[3].isoformat(), "name": r[4], "ella_uid": r[5],
+            }
+            for r in cur.fetchall()
+        ]
+    conn.close()
+    return JSONResponse({"scans": rows})
 
 
 @app.get("/api/pets")

@@ -42,6 +42,9 @@
     100% { transform:translateY(-130px) rotate(calc(var(--r,0deg) + 16deg)) scale(1); opacity:0; }
   }
   .content { position:relative; z-index:1; }
+  .topnav { max-width:680px; margin:10px auto 0; display:flex; justify-content:flex-end; gap:8px; }
+  .topnav a { color:var(--muted); text-decoration:none; font-size:13px; font-weight:600;
+    border:1px solid var(--line-dk); padding:6px 11px; border-radius:9px; }
 
   header { max-width:680px; margin:0 auto; padding:22px 0 6px; text-align:center; }
   .bowwrap { display:flex; align-items:center; justify-content:center; gap:10px; }
@@ -148,6 +151,7 @@
 <div class="paws" id="paws"></div>
 
 <div class="content">
+<div class="topnav"><a href="/">Home</a><a href="/dashboard">Dashboard</a></div>
 <header>
   <div class="logo">
     <span class="ring"></span>
