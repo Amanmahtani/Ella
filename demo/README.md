@@ -11,7 +11,20 @@ same `model/` code and the same SECURITY DEFINER functions as everything else:
 
 This is for demos and manual testing, not production.
 
-## Run
+## Run with Docker (one command)
+
+From the repo root, no local Postgres or Python needed:
+
+```bash
+docker compose up --build
+# then open http://localhost:8000
+```
+
+This starts Postgres + pgvector, applies the migrations (001..003) automatically,
+builds the app, and serves it. First build downloads torch + the DINOv2 weights,
+so it takes a few minutes; later starts are fast. Stop with Ctrl+C.
+
+## Run manually (without Docker)
 
 ```bash
 # 1. A Postgres with the Ella schema applied (001..003) and the roles created.
