@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ella — Pet Nose-Print ID</title>
+<style>
+  :root {
+    --bg: #0f1419; --card: #1a212b; --line: #2a333f; --text: #e6edf3;
+    --muted: #93a1b0; --accent: #4cc38a; --accent2: #3b82f6; --warn: #f0a44a;
+    --danger: #e5534b; --radius: 14px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f4f6f8; --card:#fff; --line:#e3e8ee; --text:#1a2029; --muted:#5b6673; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 0 16px 48px;
+  }
+  header { max-width: 980px; margin: 0 auto; padding: 28px 0 8px; }
+  h1 { font-size: 24px; margin: 0; display: flex; align-items: center; gap: 10px; }
+  .paw { font-size: 26px; }
+  .sub { color: var(--muted); margin: 6px 0 0; font-size: 14px; }
+  .note {
+    max-width: 980px; margin: 14px auto 0; background: color-mix(in srgb, var(--warn) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+    color: var(--text); padding: 10px 14px; border-radius: 10px; font-size: 13px;
+  }
+  .grid { max-width: 980px; margin: 22px auto 0; display: grid; gap: 18px; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  .card h2 { margin: 0 0 4px; font-size: 17px; }
+  .card p.hint { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px; text-transform: uppercase; letter-spacing: .03em; }
+  input[type=text] {
+    width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--text);
+    padding: 9px 11px; border-radius: 9px; font-size: 14px;
+  }
+  .row { display: flex; gap: 10px; }
+  .row > div { flex: 1; }
+  .drop {
+    border: 1.5px dashed var(--line); border-radius: 11px; padding: 18px; text-align: center;
+    cursor: pointer; color: var(--muted); font-size: 13px; transition: border-color .15s;
+  }
+  .drop:hover { border-color: var(--accent2); }
+  .drop img { max-height: 140px; border-radius: 9px; margin-top: 10px; display: block; margin-inline: auto; }
+  input[type=file] { display: none; }
+  button {
+    width: 100%; margin-top: 16px; border: 0; border-radius: 10px; padding: 11px;
+    font-size: 15px; font-weight: 600; cursor: pointer; color: #06120c;
+  }
+  .btn-enroll { background: var(--accent); }
+  .btn-id { background: var(--accent2); color: #fff; }
+  button:disabled { opacity: .6; cursor: default; }
+  .result { margin-top: 16px; font-size: 14px; }
+  .uid { font-family: ui-monospace, Menlo, monospace; background: var(--bg); padding: 2px 7px; border-radius: 6px; }
+  .match { border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px; margin-top: 9px; }
+  .match .top { display: flex; justify-content: space-between; align-items: baseline; }
+  .match .name { font-weight: 600; }
+  .bar { height: 7px; background: var(--line); border-radius: 5px; margin-top: 8px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--accent); }
+  .ok { color: var(--accent); } .bad { color: var(--danger); } .mut { color: var(--muted); }
+  .pets { max-width: 980px; margin: 22px auto 0; }
+  .pets h2 { font-size: 15px; color: var(--muted); font-weight: 600; margin: 0 0 10px; }
+  .petlist { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pill { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 6px 13px; font-size: 13px; }
+  .pill b { font-weight: 600; } .pill .uid { font-size: 11px; }
+  .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: s .7s linear infinite; vertical-align: -2px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="paw">🐾</span> Ella</h1>
+  <p class="sub">Pet identity by nose-print biometrics, no microchip required.</p>
+</header>
+
+<div class="note">
+  Demo running on <b>stock DINOv2</b> (not yet fine-tuned) with a centre-crop fallback for the
+  nose detector. Identity separation works, but accuracy is not production-grade until the model
+  is trained on real pet-nose data. Use clear, close-up nose photos for best results.
+</div>
+
+<div class="grid">
+  <!-- Register -->
+  <div class="card">
+    <h2>Register a pet</h2>
+    <p class="hint">Enrol a new nose-print into the registry.</p>
+    <div class="drop" id="enrollDrop">
+      Tap to choose or take a nose photo
+      <input type="file" id="enrollFile" accept="image/*" capture="environment">
+    </div>
+    <label>Name</label>
+    <input type="text" id="enrollName" placeholder="e.g. Ella">
+    <div class="row">
+      <div><label>Species</label><input type="text" id="enrollSpecies" value="dog"></div>
+      <div><label>Breed</label><input type="text" id="enrollBreed" placeholder="optional"></div>
+    </div>
+    <div class="row">
+      <div><label>Region</label><input type="text" id="enrollRegion" value="BLR"></div>
+      <div><label>Microchip</label><input type="text" id="enrollChip" placeholder="optional"></div>
+    </div>
+    <button class="btn-enroll" id="enrollBtn">Register pet</button>
+    <div class="result" id="enrollResult"></div>
+  </div>
+
+  <!-- Identify -->
+  <div class="card">
+    <h2>Find a pet</h2>
+    <p class="hint">Scan a found animal's nose to look up its identity.</p>
+    <div class="drop" id="idDrop">
+      Tap to choose or take a nose photo
+      <input type="file" id="idFile" accept="image/*" capture="environment">
+    </div>
+    <button class="btn-id" id="idBtn">Identify</button>
+    <div class="result" id="idResult"></div>
+  </div>
+</div>
+
+<div class="pets">
+  <h2>Registered pets (<span id="petCount">0</span>)</h2>
+  <div class="petlist" id="petList"></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function wireDrop(dropId, fileId) {
+  const drop = $(dropId), file = $(fileId);
+  drop.addEventListener("click", () => file.click());
+  file.addEventListener("change", () => {
+    if (!file.files[0]) return;
+    const url = URL.createObjectURL(file.files[0]);
+    drop.innerHTML = `Selected: ${file.files[0].name}<img src="${url}" alt="preview">`;
+    drop.appendChild(file);
+  });
+}
+wireDrop("enrollDrop", "enrollFile");
+wireDrop("idDrop", "idFile");
+
+async function loadPets() {
+  try {
+    const r = await fetch("/api/pets");
+    const d = await r.json();
+    $("petCount").textContent = d.count;
+    $("petList").innerHTML = d.pets.map(p =>
+      `<span class="pill"><b>${p.name}</b> ${p.breed ? "("+p.breed+") " : ""}<span class="uid">${p.ella_uid}</span></span>`
+    ).join("") || '<span class="mut">None yet. Register one above.</span>';
+  } catch (e) { /* ignore */ }
+}
+loadPets();
+
+$("enrollBtn").addEventListener("click", async () => {
+  const f = $("enrollFile").files[0], name = $("enrollName").value.trim();
+  const out = $("enrollResult");
+  if (!f) { out.innerHTML = '<span class="bad">Choose a nose photo first.</span>'; return; }
+  if (!name) { out.innerHTML = '<span class="bad">Enter a name.</span>'; return; }
+  const btn = $("enrollBtn"); btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Registering...';
+  out.innerHTML = "";
+  const fd = new FormData();
+  fd.append("file", f); fd.append("name", name);
+  fd.append("species", $("enrollSpecies").value || "dog");
+  fd.append("breed", $("enrollBreed").value);
+  fd.append("region", $("enrollRegion").value || "BLR");
+  fd.append("microchip", $("enrollChip").value);
+  try {
+    const r = await fetch("/api/enroll", { method: "POST", body: fd });
+    const d = await r.json();
+    out.innerHTML = d.ok
+      ? `<span class="ok">Registered.</span> ID: <span class="uid">${d.ella_uid}</span>`
+      : `<span class="bad">Error: ${d.error}</span>`;
+    if (d.ok) loadPets();
+  } catch (e) { out.innerHTML = `<span class="bad">${e}</span>`; }
+  btn.disabled = false; btn.textContent = "Register pet";
+});
+
+$("idBtn").addEventListener("click", async () => {
+  const f = $("idFile").files[0], out = $("idResult");
+  if (!f) { out.innerHTML = '<span class="bad">Choose a nose photo first.</span>'; return; }
+  const btn = $("idBtn"); btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Scanning...';
+  out.innerHTML = "";
+  const fd = new FormData(); fd.append("file", f); fd.append("k", 3);
+  try {
+    const r = await fetch("/api/identify", { method: "POST", body: fd });
+    const d = await r.json();
+    if (!d.ok) { out.innerHTML = `<span class="bad">Error: ${d.error}</span>`; }
+    else if (!d.matches.length) { out.innerHTML = '<span class="mut">No match found. This pet is not registered, or the photo is unclear.</span>'; }
+    else {
+      out.innerHTML = d.matches.map(m => {
+        const pct = m.similarity != null ? Math.round(m.similarity * 100) : 0;
+        return `<div class="match"><div class="top"><span class="name">${m.name}</span>
+          <span class="uid">${m.ella_uid}</span></div>
+          <div class="mut">${m.species} · similarity ${pct}% · microchip ${m.has_microchip ? "yes" : "no"}</div>
+          <div class="bar"><span style="width:${pct}%"></span></div></div>`;
+      }).join("");
+    }
+  } catch (e) { out.innerHTML = `<span class="bad">${e}</span>`; }
+  btn.disabled = false; btn.textContent = "Identify";
+});
+</script>
+</body>
+</html>
