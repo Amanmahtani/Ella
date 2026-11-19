@@ -239,6 +239,9 @@ const $ = (id) => document.getElementById(id);
 let mode = "identify";
 let facing = "environment";
 let stream = null, rafId = null, points = [], cameraReady = false;
+// capture/scan state (fingerprint-style lock-on + quality gate)
+let scanning = false, scanProgress = 0, scanResult = "";   // scanResult: "" | "ok" | "fail"
+const SHARP_MIN = 55, BRIGHT_MIN = 32, BRIGHT_MAX = 238;
 
 // ---- drifting paw prints ----
 (function makePaws() {
@@ -306,21 +309,46 @@ function loop() {
   const c = $("ov"), ctx = c.getContext("2d"), W = c.width, H = c.height, t = performance.now()/1000;
   ctx.clearRect(0,0,W,H);
   const bw = Math.min(W,H)*.56, bx = (W-bw)/2, by = (H-bw)/2, L = 22;
-  ctx.strokeStyle = "rgba(255,59,78,.85)"; ctx.lineWidth = 3;
+  const cx = W/2, cy = by + bw/2, R = bw/2;
+
+  // colour by state: red scanning, green captured, red fail
+  const col = scanResult==="ok" ? "76,195,138" : scanResult==="fail" ? "255,59,78" : "255,59,78";
+
+  // reticle corners
+  ctx.strokeStyle = `rgba(${col},.85)`; ctx.lineWidth = 3;
   const corner = (x,y,dx,dy) => { ctx.beginPath(); ctx.moveTo(x,y+dy*L); ctx.lineTo(x,y); ctx.lineTo(x+dx*L,y); ctx.stroke(); };
   corner(bx,by,1,1); corner(bx+bw,by,-1,1); corner(bx,by+bw,1,-1); corner(bx+bw,by+bw,-1,-1);
-  const sy = by + ((Math.sin(t*1.6)+1)/2)*bw;
-  const g = ctx.createLinearGradient(0,sy-14,0,sy+14);
-  g.addColorStop(0,"rgba(255,59,78,0)"); g.addColorStop(.5,"rgba(255,59,78,.5)"); g.addColorStop(1,"rgba(255,59,78,0)");
-  ctx.fillStyle = g; ctx.fillRect(bx,sy-14,bw,28);
-  const pts = points.map(p => ({ x:p.bx*W + Math.sin(t*p.sp+p.ph)*4, y:p.by*H + Math.cos(t*p.sp+p.ph)*4, a:.55 + .45*Math.sin(t*2+p.ph) }));
-  ctx.strokeStyle = "rgba(255,59,78,.12)"; ctx.lineWidth = 1;
+
+  if (scanning || scanResult) {
+    // progress ring filling clockwise from the top (fingerprint-style)
+    ctx.strokeStyle = `rgba(${col},.25)`; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.arc(cx, cy, R+10, 0, Math.PI*2); ctx.stroke();
+    ctx.strokeStyle = `rgba(${col},.95)`; ctx.lineWidth = 5; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.arc(cx, cy, R+10, -Math.PI/2, -Math.PI/2 + Math.PI*2*scanProgress); ctx.stroke();
+    ctx.lineCap = "butt";
+  } else {
+    // idle sweep line
+    const sy = by + ((Math.sin(t*1.6)+1)/2)*bw;
+    const g = ctx.createLinearGradient(0,sy-14,0,sy+14);
+    g.addColorStop(0,`rgba(${col},0)`); g.addColorStop(.5,`rgba(${col},.5)`); g.addColorStop(1,`rgba(${col},0)`);
+    ctx.fillStyle = g; ctx.fillRect(bx,sy-14,bw,28);
+  }
+
+  // beads: during a scan they pull inward and tighten (lock-on); jitter more on fail
+  const conv = scanning ? (0.35 + 0.65*(1-scanProgress)) : 1;       // 1 = spread, →0.35 tight
+  const jit = scanResult==="fail" ? 9 : 4;
+  const pts = points.map(p => ({
+    x: cx + (p.bx-0.5)*W*conv + Math.sin(t*p.sp+p.ph)*jit,
+    y: cy + (p.by-0.52)*H*conv + Math.cos(t*p.sp+p.ph)*jit,
+    a: .55 + .45*Math.sin(t*2+p.ph),
+  }));
+  ctx.strokeStyle = `rgba(${col},.12)`; ctx.lineWidth = 1;
   for (let i=0;i<pts.length;i++) for (let j=i+1;j<pts.length;j++) {
     const d = Math.hypot(pts[i].x-pts[j].x, pts[i].y-pts[j].y);
     if (d<46){ ctx.globalAlpha=(1-d/46)*.5; ctx.beginPath(); ctx.moveTo(pts[i].x,pts[i].y); ctx.lineTo(pts[j].x,pts[j].y); ctx.stroke(); }
   }
-  ctx.globalAlpha=1; ctx.shadowColor="rgba(255,59,78,.9)"; ctx.shadowBlur=8;
-  for (const p of pts){ ctx.fillStyle=`rgba(255,59,78,${p.a})`; ctx.beginPath(); ctx.arc(p.x,p.y,2.4,0,Math.PI*2); ctx.fill(); }
+  ctx.globalAlpha=1; ctx.shadowColor=`rgba(${col},.9)`; ctx.shadowBlur=8;
+  for (const p of pts){ ctx.fillStyle=`rgba(${col},${p.a})`; ctx.beginPath(); ctx.arc(p.x,p.y,2.4,0,Math.PI*2); ctx.fill(); }
   ctx.shadowBlur=0;
   rafId = requestAnimationFrame(loop);
 }
@@ -335,17 +363,71 @@ function grabFrame() {
   cv.getContext("2d").drawImage(v, 0, 0);
   return cv;
 }
-async function captureBurst(n) {
-  const blobs = []; let last = null;
-  for (let i = 0; i < n; i++) {
-    const cv = grabFrame();
-    if (cv) { last = cv; blobs.push(await new Promise(r => cv.toBlob(r, "image/jpeg", .9))); }
-    if (i < n - 1) await sleep(300);
-  }
-  if (last) showSnap(last.toDataURL("image/jpeg", .8));
-  return blobs;
-}
 function showSnap(url) { $("snap").innerHTML = `<img src="${url}" alt="capture">`; }
+
+// Quality score of a frame: sharpness (Laplacian variance) + brightness, measured
+// on the central reticle region. Blurry, dark or covered shots score low.
+function frameQuality(cv) {
+  const S = 150, small = document.createElement("canvas");
+  small.width = small.height = S;
+  const side = Math.min(cv.width, cv.height) * 0.6;
+  small.getContext("2d").drawImage(cv, (cv.width-side)/2, (cv.height-side)/2, side, side, 0, 0, S, S);
+  const d = small.getContext("2d").getImageData(0,0,S,S).data;
+  const g = new Float32Array(S*S); let sum = 0;
+  for (let i=0,p=0;i<d.length;i+=4,p++){ const v=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]; g[p]=v; sum+=v; }
+  const bright = sum/(S*S);
+  let ls=0, lsq=0, n=0;
+  for (let y=1;y<S-1;y++) for (let x=1;x<S-1;x++){
+    const i=y*S+x, lap = 4*g[i]-g[i-1]-g[i+1]-g[i-S]-g[i+S];
+    ls+=lap; lsq+=lap*lap; n++;
+  }
+  const sharp = lsq/n - (ls/n)*(ls/n);
+  return { sharp, bright, ok: sharp>=SHARP_MIN && bright>=BRIGHT_MIN && bright<=BRIGHT_MAX };
+}
+
+// Fingerprint-style scan: beads lock on while we grab frames, keep only the
+// sharp/well-lit ones, then "Captured" or "Try again".
+async function runScan(need) {
+  scanning = true; scanResult = ""; scanProgress = 0;
+  $("hudText").textContent = "Hold steady — scanning…";
+  const blobs = []; let lastGood = null, worst = null;
+  const tries = need + 3;
+  for (let i = 0; i < tries; i++) {
+    const cv = grabFrame();
+    if (cv) {
+      const q = frameQuality(cv);
+      worst = q;
+      if (q.ok) { lastGood = cv; blobs.push(await new Promise(r => cv.toBlob(r,"image/jpeg",.9))); }
+    }
+    scanProgress = Math.min(1, blobs.length/need || (i+1)/tries*0.6);
+    if (blobs.length >= need) { scanProgress = 1; break; }
+    await sleep(240);
+  }
+  scanning = false;
+
+  if (blobs.length >= Math.ceil(need/2) && lastGood) {
+    scanResult = "ok"; $("hudText").textContent = "✓ Captured";
+    showSnap(lastGood.toDataURL("image/jpeg", .8));
+    await sleep(650); scanResult = "";
+    return blobs;
+  }
+  // failed quality gate — tell them why
+  scanResult = "fail";
+  let why = "Try again — hold steady and get closer";
+  if (worst) {
+    if (worst.bright < BRIGHT_MIN) why = "Too dark — more light, then try again";
+    else if (worst.bright > BRIGHT_MAX) why = "Too bright — reduce glare, then try again";
+    else if (worst.sharp < SHARP_MIN) why = "Too blurry — hold steady, get closer, try again";
+  }
+  $("hudText").textContent = why;
+  $("result").innerHTML = `<div class="match mut">${why}.</div>`;
+  await sleep(1400); scanResult = "";
+  updateHud();
+  return null;
+}
+function updateHud() {
+  $("hudText").textContent = mode==="identify" ? "Scanning for nose-print..." : "Ready to register";
+}
 
 // ---- modes ----
 function setMode(m) {
@@ -374,7 +456,7 @@ async function busy(fn) {
 $("captureBtn").onclick = () => {
   if (!cameraReady) { $("fileInput").click(); return; } // opens camera/picker; onchange submits
   const n = mode === "register" ? 5 : 3;             // more frames to enrol, fewer to identify
-  busy(async () => { await runWith(await captureBurst(n)); });
+  busy(async () => { const frames = await runScan(n); if (frames) await runWith(frames); });
 };
 
 function matchCard(m) {
@@ -437,11 +519,29 @@ async function sendEnroll(blobs) {
 
 // ---- fallback upload (phone over http: single photo) ----
 $("drop").onclick = () => $("fileInput").click();
+function fileToCanvas(file) {
+  return new Promise((res) => {
+    const img = new Image();
+    img.onload = () => { const cv = document.createElement("canvas");
+      cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+      cv.getContext("2d").drawImage(img, 0, 0); res(cv); };
+    img.onerror = () => res(null);
+    img.src = URL.createObjectURL(file);
+  });
+}
 $("fileInput").onchange = async () => {
   const f = $("fileInput").files[0];
   if (!f) return;
   showSnap(URL.createObjectURL(f));
-  if (!cameraReady) await busy(async () => { await runWith([f]); }); // auto-submit on phone fallback
+  if (cameraReady) return;
+  const cv = await fileToCanvas(f);
+  const q = cv ? frameQuality(cv) : { ok: true };
+  if (!q.ok) {
+    const why = q.bright<BRIGHT_MIN ? "too dark" : q.bright>BRIGHT_MAX ? "too bright" : "too blurry";
+    $("result").innerHTML = `<div class="match mut">That photo was ${why} — try a clearer, closer nose shot.</div>`;
+    return;
+  }
+  await busy(async () => { await runWith([f]); }); // auto-submit on phone fallback
 };
 
 // ---- registry ----
