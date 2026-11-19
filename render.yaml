@@ -1,0 +1,22 @@
+# Render Blueprint for the Ella demo app.
+# Database is a separate free Supabase project (its schema already matches Ella's
+# anon / service_role roles). See DEPLOY.md for the full walkthrough.
+#
+# In the Render dashboard, after creating from this blueprint, set DATABASE_URL
+# to your Supabase connection string (Settings -> Environment).
+
+services:
+  - type: web
+    name: ella
+    runtime: docker
+    dockerfilePath: ./demo/Dockerfile
+    dockerContext: .
+    plan: standard            # ~2 GB RAM — torch + DINOv2 need it (free/starter is too small)
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        sync: false           # paste your Supabase connection string in the dashboard
+      - key: RUN_MIGRATIONS
+        value: "1"            # apply 001..003 on boot (idempotent)
+      - key: HF_HUB_DISABLE_TELEMETRY
+        value: "1"

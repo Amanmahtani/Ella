@@ -1,9 +1,10 @@
 # Ella demo app image: the FastAPI preview over the real model/ pipeline.
 FROM python:3.12-slim
 
-# opencv-python-headless needs libglib; openssl generates the self-signed cert.
+# opencv-python-headless needs libglib; openssl makes the local self-signed cert;
+# postgresql-client (psql) applies migrations on a cloud deploy.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      libglib2.0-0 openssl \
+      libglib2.0-0 openssl postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -25,6 +26,8 @@ AutoImageProcessor.from_pretrained('facebook/dinov2-small')"
 # App code (demo/ imports ../model at runtime).
 COPY model/ ./model/
 COPY demo/ ./demo/
+# Migration SQL, used by start.sh on a cloud deploy (RUN_MIGRATIONS=1).
+COPY 001_ella_init.sql 002_ella_functions.sql 003_ella_security.sql /app/
 
 WORKDIR /app/demo
 EXPOSE 8000 8443
