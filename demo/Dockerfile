@@ -8,10 +8,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# torch from PyPI works on both Intel and Apple-Silicon machines (the pytorch CPU
-# index has no arm64 Linux wheels, which breaks the build on M1/M2/M3 Macs).
+# torch is pinned to 2.6.0: from this version back, its NVIDIA CUDA dependencies
+# are gated to x86_64, so on arm64 (Apple Silicon containers) they are skipped
+# entirely. torch 2.15 dropped that gate and drags ~5 GB of unused GPU libraries
+# onto arm64. Pinning keeps the image small and CPU-only, and the arm64 wheel is
+# ~96 MB. DINOv2 via transformers runs fine on this version.
 RUN pip install --no-cache-dir \
-      torch transformers numpy pillow opencv-python-headless \
+      "torch==2.6.0" transformers numpy pillow opencv-python-headless \
       "psycopg[binary]" fastapi "uvicorn[standard]" python-multipart
 
 # Bake the DINOv2 weights into the image so the first request is fast.
