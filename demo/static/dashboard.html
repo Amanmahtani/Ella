@@ -62,6 +62,8 @@
   .pill { display:inline-flex; align-items:center; gap:7px; background:var(--cream); color:var(--ink);
     border-radius:20px; padding:7px 13px; font-size:13px; margin:0 8px 8px 0; }
   .pill .paw { width:13px; height:13px; color:var(--ink); }
+  .pavatar { width:22px; height:22px; border-radius:50%; object-fit:cover; }
+  .savatar { width:28px; height:28px; border-radius:50%; object-fit:cover; vertical-align:middle; margin-right:8px; }
   .chip { font-size:11px; color:var(--muted2); }
 
   /* mobile-first: turn the scans table into stacked cards on narrow screens */
@@ -154,7 +156,8 @@ function loadScans() {
     if (!rows.length) { $("scanRows").innerHTML='<tr><td class="empty">No scans yet for this clinic.</td></tr>'; return; }
     $("scanRows").innerHTML = rows.map(s => {
       const pct = s.similarity!=null ? Math.round(s.similarity*100)+"%" : "—";
-      const who = s.name ? `${s.name} <span class="uid">${s.ella_uid||""}</span>` : '<span class="uid">unknown</span>';
+      const av = s.photo_url ? `<img class="savatar" src="${s.photo_url}">` : "";
+      const who = s.name ? `${av}${s.name} <span class="uid">${s.ella_uid||""}</span>` : '<span class="uid">unknown</span>';
       return `<tr>
         <td data-label="Pet">${who}</td>
         <td data-label="Action">${s.action}</td>
@@ -167,7 +170,7 @@ function loadScans() {
 function renderPets(q="") {
   const list = allPets.filter(p => (p.name+" "+p.ella_uid).toLowerCase().includes(q.toLowerCase()));
   $("registry").innerHTML = list.length ? list.map(p =>
-    `<span class="pill"><svg class="paw"><use href="#paw"/></svg><b>${p.name}</b>
+    `<span class="pill">${p.photo_url ? `<img class="pavatar" src="${p.photo_url}">` : `<svg class="paw"><use href="#paw"/></svg>`}<b>${p.name}</b>
       <span class="uid">${p.ella_uid}</span></span>`).join("")
     : '<span class="chip">No pets yet.</span>';
 }

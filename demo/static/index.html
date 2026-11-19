@@ -110,10 +110,18 @@
   .snap img { max-height:120px; border-radius:12px; border:2px solid var(--cream); }
 
   .result { max-width:680px; margin:14px auto 0; }
-  .match { background:var(--panel); border:1px solid var(--line); border-radius:13px; padding:14px 16px; margin-top:9px; color:var(--ink); }
-  .match.mut { color:var(--muted2); }
-  .match .top { display:flex; justify-content:space-between; align-items:baseline; }
+  .match { background:var(--panel); border:1px solid var(--line); border-radius:13px; padding:14px 16px; margin-top:9px; color:var(--ink);
+    display:flex; gap:12px; align-items:center; }
+  .match.mut { color:var(--muted2); display:block; }
+  .match .info { flex:1; min-width:0; }
+  .match .top { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
   .match .name { font-weight:800; font-size:16px; }
+  .mphoto { width:56px; height:56px; border-radius:12px; object-fit:cover; flex:0 0 auto; border:1px solid var(--line); }
+  .lostbadge { font-size:10px; font-weight:800; color:#fff; background:var(--scan); padding:2px 7px; border-radius:20px; margin-left:6px; vertical-align:2px; }
+  .reunite { flex:0 0 auto; background:var(--ok); color:#06120c; border:0; border-radius:10px; padding:10px 13px; font-weight:800; font-size:13px; cursor:pointer; }
+  .reunite:disabled { opacity:.6; }
+  .reunited { color:#1f7a50; font-weight:700; font-size:13px; flex:0 0 auto; }
+  .found-h { color:var(--ok); font-weight:800; font-size:14px; margin:4px 2px 2px; }
   .uid { font-family:ui-monospace,Menlo,monospace; font-size:12px; background:var(--bg2); color:var(--cream); padding:2px 7px; border-radius:6px; }
   .bar { height:8px; background:var(--line); border-radius:5px; margin-top:10px; overflow:hidden; }
   .bar > span { display:block; height:100%; background:linear-gradient(90deg,var(--gold),var(--ok)); }
@@ -127,6 +135,7 @@
   .petlist { display:flex; flex-wrap:wrap; gap:8px; }
   .pill { background:var(--cream); color:var(--ink); border-radius:20px; padding:7px 13px; font-size:13px; display:flex; align-items:center; gap:6px; }
   .pill .pawmini { width:13px; height:13px; color:var(--ink); }
+  .pill .pavatar { width:20px; height:20px; border-radius:50%; object-fit:cover; }
   .pill .uid { background:var(--ink); }
 
   .fallback { max-width:680px; margin:14px auto 0; display:none; }
@@ -188,6 +197,7 @@
     <select id="petSpecies"><option value="cat">Cat</option><option value="dog">Dog</option></select>
     <select id="petClinic"><option value="">No clinic</option></select>
   </div>
+  <input type="text" id="ownerPhone" placeholder="Owner phone (optional)" style="margin-top:10px">
 </div>
 
 <div class="cap">
@@ -307,17 +317,25 @@ function loop() {
   rafId = requestAnimationFrame(loop);
 }
 
-// ---- capture ----
-function captureBlob() {
-  return new Promise((resolve) => {
-    const v = $("video");
-    if (!v.videoWidth) return resolve(null);
-    const cv = document.createElement("canvas");
-    cv.width = v.videoWidth; cv.height = v.videoHeight;
-    cv.getContext("2d").drawImage(v,0,0);
-    showSnap(cv.toDataURL("image/jpeg",.9));
-    cv.toBlob(b => resolve(b), "image/jpeg", .9);
-  });
+// ---- capture (burst of frames for a robust, averaged nose print) ----
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+function grabFrame() {
+  const v = $("video");
+  if (!v.videoWidth) return null;
+  const cv = document.createElement("canvas");
+  cv.width = v.videoWidth; cv.height = v.videoHeight;
+  cv.getContext("2d").drawImage(v, 0, 0);
+  return cv;
+}
+async function captureBurst(n) {
+  const blobs = []; let last = null;
+  for (let i = 0; i < n; i++) {
+    const cv = grabFrame();
+    if (cv) { last = cv; blobs.push(await new Promise(r => cv.toBlob(r, "image/jpeg", .9))); }
+    if (i < n - 1) await sleep(300);
+  }
+  if (last) showSnap(last.toDataURL("image/jpeg", .8));
+  return blobs;
 }
 function showSnap(url) { $("snap").innerHTML = `<img src="${url}" alt="capture">`; }
 
@@ -336,9 +354,9 @@ $("mRegister").onclick = () => setMode("register");
 $("flipBtn").onclick = () => { facing = facing==="environment" ? "user" : "environment"; startCamera(); };
 
 // ---- actions ----
-async function runWith(blob) {
-  if (!blob) { $("result").innerHTML = '<span class="bad">No image captured.</span>'; return; }
-  await (mode === "identify" ? sendIdentify(blob) : sendEnroll(blob));
+async function runWith(blobs) {
+  if (!blobs || !blobs.length) { $("result").innerHTML = '<span class="bad">No image captured.</span>'; return; }
+  await (mode === "identify" ? sendIdentify(blobs) : sendEnroll(blobs));
 }
 async function busy(fn) {
   const b = $("captureBtn"); b.disabled = true;
@@ -347,47 +365,71 @@ async function busy(fn) {
 }
 $("captureBtn").onclick = () => {
   if (!cameraReady) { $("fileInput").click(); return; } // opens camera/picker; onchange submits
-  busy(async () => { await runWith(await captureBlob()); });
+  const n = mode === "register" ? 5 : 3;             // more frames to enrol, fewer to identify
+  busy(async () => { await runWith(await captureBurst(n)); });
 };
 
-async function sendIdentify(blob) {
-  const fd = new FormData(); fd.append("file", blob, "scan.jpg"); fd.append("k", 3);
+function matchCard(m) {
+  const pct = m.similarity!=null ? Math.round(m.similarity*100) : 0;
+  const photo = m.photo_url ? `<img class="mphoto" src="${m.photo_url}" alt="">` : "";
+  const lost = m.is_lost ? '<span class="lostbadge">LOST</span>' : "";
+  return `<div class="match">${photo}
+    <div class="info">
+      <div class="top"><span class="name">${m.name}${lost}</span><span class="uid">${m.ella_uid}</span></div>
+      <div style="color:var(--muted2)">${m.species||"pet"} · match ${pct}%</div>
+      <div class="bar"><span style="width:${pct}%"></span></div>
+    </div>
+    <button class="reunite" onclick="reunite('${m.ella_uid}', this)">Notify owner</button>
+  </div>`;
+}
+async function reunite(uid, btn) {
+  btn.disabled = true; btn.textContent = "Notifying…";
+  const fd = new FormData(); fd.append("ella_uid", uid);
+  try {
+    const d = await (await fetch("/api/relay",{method:"POST",body:fd})).json();
+    btn.outerHTML = d.ok
+      ? `<span class="reunited">✓ Owner alerted (${d.masked})</span>`
+      : `<span class="bad">${d.error}</span>`;
+  } catch (e) { btn.disabled = false; btn.textContent = "Notify owner"; }
+}
+
+async function sendIdentify(blobs) {
+  const fd = new FormData(); blobs.forEach((b,i)=>fd.append("files", b, "scan"+i+".jpg")); fd.append("k", 3);
   const out = $("result");
   try {
     const d = await (await fetch("/api/identify",{method:"POST",body:fd})).json();
     if (!d.ok) out.innerHTML = `<span class="bad">Error: ${d.error}</span>`;
     else if (!d.matches.length) out.innerHTML = '<div class="match mut">No match. This pet is not registered, or try a clearer, closer nose shot.</div>';
-    else out.innerHTML = d.matches.map(m => {
-      const pct = m.similarity!=null ? Math.round(m.similarity*100) : 0;
-      return `<div class="match"><div class="top"><span class="name">${m.name}</span><span class="uid">${m.ella_uid}</span></div>
-        <div style="color:var(--muted2)">${m.species} · match ${pct}% · microchip ${m.has_microchip?"yes":"no"}</div>
-        <div class="bar"><span style="width:${pct}%"></span></div></div>`;
-    }).join("");
+    else out.innerHTML = '<div class="found-h">🎉 Found a match!</div>' + d.matches.map(matchCard).join("");
   } catch (e) { out.innerHTML = `<span class="bad">${e}</span>`; }
 }
 
-async function sendEnroll(blob) {
+async function sendEnroll(blobs) {
   const name = $("petName").value.trim(), out = $("result");
   if (!name) { out.innerHTML = '<span class="bad">Enter a name first (Register mode).</span>'; return; }
-  const fd = new FormData(); fd.append("file", blob, "scan.jpg"); fd.append("name", name);
-  fd.append("species", $("petSpecies").value); fd.append("region","BLR");
-  fd.append("clinic", $("petClinic").value);
+  const fd = new FormData();
+  blobs.forEach((b,i)=>fd.append("files", b, "scan"+i+".jpg"));
+  fd.append("name", name); fd.append("species", $("petSpecies").value);
+  fd.append("region","BLR"); fd.append("clinic", $("petClinic").value);
+  fd.append("owner_phone", $("ownerPhone").value);
   try {
     const d = await (await fetch("/api/enroll",{method:"POST",body:fd})).json();
     out.innerHTML = d.ok
-      ? `<div class="match"><span class="ok">Registered ${name}.</span> ID: <span class="uid">${d.ella_uid}</span></div>`
+      ? `<div class="match">${d.photo_url?`<img class="mphoto" src="${d.photo_url}">`:""}
+          <div class="info"><span class="ok">Registered ${name}</span> from ${d.frames} frames.<br>
+          ID: <span class="uid">${d.ella_uid}</span></div></div>`
       : `<span class="bad">Error: ${d.error}</span>`;
     if (d.ok) { $("petName").value = ""; loadPets(); }
   } catch (e) { out.innerHTML = `<span class="bad">${e}</span>`; }
 }
 
-// ---- fallback upload ----
+// ---- fallback upload (phone over http: single photo) ----
 $("drop").onclick = () => $("fileInput").click();
 $("fileInput").onchange = async () => {
   const f = $("fileInput").files[0];
   if (!f) return;
   showSnap(URL.createObjectURL(f));
-  if (!cameraReady) await busy(async () => { await runWith(f); }); // auto-submit on phone fallback
+  if (!cameraReady) await busy(async () => { await runWith([f]); }); // auto-submit on phone fallback
 };
 
 // ---- registry ----
@@ -396,7 +438,7 @@ async function loadPets() {
     const d = await (await fetch("/api/pets")).json();
     $("petCount").textContent = d.count;
     $("petList").innerHTML = d.pets.map(p =>
-      `<span class="pill"><svg class="pawmini"><use href="#paw"/></svg><b>${p.name}</b> <span class="uid">${p.ella_uid}</span></span>`).join("")
+      `<span class="pill">${p.photo_url ? `<img class="pavatar" src="${p.photo_url}">` : `<svg class="pawmini"><use href="#paw"/></svg>`}<b>${p.name}</b> <span class="uid">${p.ella_uid}</span></span>`).join("")
       || '<span style="color:var(--muted)">None yet.</span>';
   } catch (e) {}
 }

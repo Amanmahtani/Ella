@@ -35,6 +35,11 @@ services:
     ports:
       - "8000:8000"   # http  — Mac at http://localhost:8000
       - "8443:8443"   # https — phone at https://<your-ip>:8443
+    volumes:
+      - pet_photos:/app/demo/static/pets   # keep enrolled pet photos across rebuilds
     depends_on:
       db:
         condition: service_healthy
+
+volumes:
+  pet_photos:

@@ -42,15 +42,49 @@ def embedder() -> NoseEmbedder:
     return _embedder
 
 
-def _embed_upload(upload: UploadFile) -> np.ndarray:
-    suffix = os.path.splitext(upload.filename or "img.jpg")[1] or ".jpg"
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(upload.file.read())
+PETS_DIR = os.path.join(HERE, "static", "pets")
+os.makedirs(PETS_DIR, exist_ok=True)
+
+
+def _embed_bytes(data: bytes) -> np.ndarray:
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+        tmp.write(data)
         path = tmp.name
     try:
         return embedder().embed_image(path)
     finally:
         os.unlink(path)
+
+
+def _embed_files(files: list[UploadFile]) -> tuple[np.ndarray, bytes]:
+    """Embed every frame and average into one robust nose print (L2-normalised).
+
+    Multi-frame capture is the cheapest reliability win: averaging several shots
+    of the same nose cancels per-frame noise, so a re-scan matches far more
+    reliably. Returns the mean vector and the first frame's bytes (for the photo).
+    """
+    vecs: list[np.ndarray] = []
+    first: bytes | None = None
+    for f in files:
+        data = f.file.read()
+        if not data:
+            continue
+        if first is None:
+            first = data
+        vecs.append(_embed_bytes(data))
+    if not vecs:
+        raise ValueError("no usable frames")
+    mean = np.mean(np.stack(vecs), axis=0)
+    mean = mean / (np.linalg.norm(mean) + 1e-12)
+    return mean.astype(np.float32), first
+
+
+def _save_pet_photo(pet_id: str, data: bytes) -> str:
+    """Save a representative frame as the pet's photo and return its URL."""
+    path = os.path.join(PETS_DIR, f"{pet_id}.jpg")
+    with open(path, "wb") as fh:
+        fh.write(data)
+    return f"/static/pets/{pet_id}.jpg"
 
 
 @app.on_event("startup")
@@ -137,10 +171,10 @@ def scans(clinic: str | None = None) -> JSONResponse:
     conn = db.connect(role="service_role")
     with conn.cursor() as cur:
         cur.execute("""
-            select v.action, v.outcome, v.similarity, v.created_at, p.name, p.ella_uid
+            select v.action, v.outcome, v.similarity, v.created_at, p.name, p.ella_uid, p.photo_url
             from verification_logs v
             left join pets p on p.id = v.pet_id
-            where v.action in ('identify','lookup','enroll')
+            where v.action in ('identify','lookup','enroll','alert_relay')
               and (%(c)s::uuid is null or p.organization_id = %(c)s::uuid)
             order by v.created_at desc
             limit 25
@@ -149,7 +183,7 @@ def scans(clinic: str | None = None) -> JSONResponse:
             {
                 "action": r[0], "outcome": r[1],
                 "similarity": float(r[2]) if r[2] is not None else None,
-                "at": r[3].isoformat(), "name": r[4], "ella_uid": r[5],
+                "at": r[3].isoformat(), "name": r[4], "ella_uid": r[5], "photo_url": r[6],
             }
             for r in cur.fetchall()
         ]
@@ -179,13 +213,14 @@ def list_pets(clinic: str | None = None) -> JSONResponse:
     conn = db.connect(role="service_role")
     with conn.cursor() as cur:
         cur.execute(
-            "select name, ella_uid, species, coalesce(breed,'') from pets "
+            "select name, ella_uid, species, coalesce(breed,''), photo_url, is_lost from pets "
             "where (%(c)s::uuid is null or organization_id = %(c)s::uuid) "
             "order by created_at desc limit 100",
             {"c": clinic},
         )
         pets = [
-            {"name": r[0], "ella_uid": r[1], "species": r[2], "breed": r[3]}
+            {"name": r[0], "ella_uid": r[1], "species": r[2], "breed": r[3],
+             "photo_url": r[4], "is_lost": r[5]}
             for r in cur.fetchall()
         ]
     conn.close()
@@ -194,16 +229,17 @@ def list_pets(clinic: str | None = None) -> JSONResponse:
 
 @app.post("/api/enroll")
 async def enroll(
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     name: str = Form(...),
     species: str = Form("dog"),
     breed: str = Form(""),
     region: str = Form("BLR"),
     microchip: str = Form(""),
     clinic: str = Form(""),
+    owner_phone: str = Form(""),
 ) -> JSONResponse:
     try:
-        vec = _embed_upload(file)
+        vec, first = _embed_files(files)
         conn = db.connect(role="service_role")
         row = db.enroll_pet(
             conn,
@@ -214,45 +250,77 @@ async def enroll(
             model_id=DEFAULT_MODEL_ID,
             breed=breed or None,
             microchip_number=microchip or None,
+            owner_phone=owner_phone or None,
             region=region,
-            frame_count=1,
+            frame_count=len(files),
             organization_id=clinic or None,
         )
+        pet_id = str(row["pet_id"])
+        photo_url = _save_pet_photo(pet_id, first) if first else None
+        if photo_url:
+            with conn.cursor() as cur:
+                cur.execute("update pets set photo_url=%s where id=%s", (photo_url, pet_id))
+            conn.commit()
         conn.close()
         return JSONResponse({
-            "ok": True,
-            "ella_uid": row["ella_uid"],
-            "pet_id": str(row["pet_id"]),
-            "has_microchip": row["has_microchip"],
+            "ok": True, "ella_uid": row["ella_uid"], "pet_id": pet_id,
+            "has_microchip": row["has_microchip"], "photo_url": photo_url,
+            "frames": len(files),
         })
     except Exception as e:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
 
 
 @app.post("/api/identify")
-async def identify(file: UploadFile = File(...), k: int = Form(3)) -> JSONResponse:
+async def identify(files: list[UploadFile] = File(...), k: int = Form(3)) -> JSONResponse:
     try:
-        vec = _embed_upload(file)
+        vec, _ = _embed_files(files)
         conn = db.connect(role="anon")
         rows = db.public_identify(
-            conn,
-            embedding=to_pgvector(vec),
-            modality=DEFAULT_MODALITY,
-            model_id=DEFAULT_MODEL_ID,
-            k=k,
+            conn, embedding=to_pgvector(vec),
+            modality=DEFAULT_MODALITY, model_id=DEFAULT_MODEL_ID, k=k,
         )
         conn.close()
         matches = [
             {
-                "name": r.get("name"),
-                "ella_uid": r.get("ella_uid"),
-                "species": r.get("species"),
+                "name": r.get("name"), "ella_uid": r.get("ella_uid"),
+                "species": r.get("species"), "breed": r.get("breed"),
                 "similarity": float(r["similarity"]) if r.get("similarity") is not None else None,
-                "has_microchip": r.get("has_microchip"),
+                "has_microchip": r.get("has_microchip"), "photo_url": r.get("photo_url"),
+                "is_lost": r.get("is_lost"), "is_vet_verified": r.get("is_vet_verified"),
+                "relay_token": r.get("alert_relay_token"),
             }
             for r in rows
         ]
         return JSONResponse({"ok": True, "matches": matches})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+
+
+@app.post("/api/relay")
+async def relay(ella_uid: str = Form(...)) -> JSONResponse:
+    """Reunion payoff: a finder alerts the owner via the relay, without ever
+    seeing the owner's real contact details. Logs an alert_relay event and
+    returns a masked confirmation (real messaging would hook in here)."""
+    try:
+        conn = db.connect(role="service_role")
+        with conn.cursor() as cur:
+            cur.execute("select id, name, owner_phone, owner_email from pets where ella_uid=%s", (ella_uid,))
+            row = cur.fetchone()
+            if not row:
+                conn.close()
+                return JSONResponse({"ok": False, "error": "unknown pet"}, status_code=404)
+            pet_id, name, phone, email = row
+            cur.execute(
+                "insert into verification_logs (pet_id, action, outcome, modality) "
+                "values (%s, 'alert_relay', 'success', %s)",
+                (pet_id, DEFAULT_MODALITY),
+            )
+        conn.commit()
+        conn.close()
+        contact = phone or email or ""
+        masked = (contact[:3] + "••••" + contact[-2:]) if len(contact) >= 5 else "on file"
+        return JSONResponse({"ok": True, "name": name, "masked": masked})
     except Exception as e:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
 
