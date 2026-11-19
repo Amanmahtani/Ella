@@ -1,9 +1,9 @@
 # Ella demo app image: the FastAPI preview over the real model/ pipeline.
 FROM python:3.12-slim
 
-# opencv-python-headless needs libglib at runtime.
+# opencv-python-headless needs libglib; openssl generates the self-signed cert.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      libglib2.0-0 \
+      libglib2.0-0 openssl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -27,5 +27,5 @@ COPY model/ ./model/
 COPY demo/ ./demo/
 
 WORKDIR /app/demo
-EXPOSE 8000
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 8000 8443
+CMD ["bash", "start.sh"]
