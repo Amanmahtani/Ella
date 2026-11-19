@@ -209,7 +209,7 @@
 const $ = (id) => document.getElementById(id);
 let mode = "identify";
 let facing = "environment";
-let stream = null, rafId = null, points = [];
+let stream = null, rafId = null, points = [], cameraReady = false;
 
 // ---- drifting paw prints ----
 (function makePaws() {
@@ -239,13 +239,20 @@ async function startCamera() {
     v.srcObject = stream;
     v.classList.toggle("mirror", facing === "user");
     await v.play();
-    $("fallback").classList.remove("show");
-    sizeCanvas(); seedPoints(); loop();
+    cameraReady = true;
+    $("fallback").classList.remove("show"); $("guide").style.display = "";
+    sizeCanvas(); seedPoints(); loop(); updateCapLabel();
   } catch (e) {
+    cameraReady = false;
     $("fallback").classList.add("show");
     $("guide").style.display = "none";
-    $("hudText").textContent = "Camera not available";
+    $("hudText").textContent = "Live camera needs https — tap the button to snap a photo";
+    updateCapLabel();
   }
+}
+function updateCapLabel() {
+  const base = mode === "identify" ? "Identify" : "Register";
+  $("capLabel").textContent = (cameraReady ? "Scan & " : "Take Photo & ") + base;
 }
 function stopCamera() {
   if (rafId) cancelAnimationFrame(rafId);
@@ -309,24 +316,27 @@ function setMode(m) {
   $("mIdentify").classList.toggle("on", m==="identify");
   $("mRegister").classList.toggle("on", m==="register");
   $("namebar").classList.toggle("show", m==="register");
-  $("capLabel").textContent = m==="identify" ? "Scan & Identify" : "Scan & Register";
   $("hudText").textContent = m==="identify" ? "Scanning for nose-print..." : "Ready to register";
   $("result").innerHTML = "";
+  updateCapLabel();
 }
 $("mIdentify").onclick = () => setMode("identify");
 $("mRegister").onclick = () => setMode("register");
 $("flipBtn").onclick = () => { facing = facing==="environment" ? "user" : "environment"; startCamera(); };
 
 // ---- actions ----
-async function doCapture() {
-  const blob = await captureBlob() || await fileBlob();
+async function runWith(blob) {
   if (!blob) { $("result").innerHTML = '<span class="bad">No image captured.</span>'; return; }
-  mode==="identify" ? sendIdentify(blob) : sendEnroll(blob);
+  await (mode === "identify" ? sendIdentify(blob) : sendEnroll(blob));
+}
+async function busy(fn) {
+  const b = $("captureBtn"); b.disabled = true;
+  $("capLabel").innerHTML = '<span class="spin"></span> Scanning...';
+  try { await fn(); } finally { b.disabled = false; updateCapLabel(); }
 }
 $("captureBtn").onclick = () => {
-  const b = $("captureBtn"), label = $("capLabel").textContent;
-  b.disabled = true; $("capLabel").innerHTML = '<span class="spin"></span> Scanning...';
-  doCapture().finally(() => { b.disabled = false; $("capLabel").textContent = label; });
+  if (!cameraReady) { $("fileInput").click(); return; } // opens camera/picker; onchange submits
+  busy(async () => { await runWith(await captureBlob()); });
 };
 
 async function sendIdentify(blob) {
@@ -361,9 +371,12 @@ async function sendEnroll(blob) {
 
 // ---- fallback upload ----
 $("drop").onclick = () => $("fileInput").click();
-let pendingFile = null;
-$("fileInput").onchange = () => { pendingFile = $("fileInput").files[0]; if (pendingFile) showSnap(URL.createObjectURL(pendingFile)); };
-function fileBlob() { return Promise.resolve(pendingFile); }
+$("fileInput").onchange = async () => {
+  const f = $("fileInput").files[0];
+  if (!f) return;
+  showSnap(URL.createObjectURL(f));
+  if (!cameraReady) await busy(async () => { await runWith(f); }); // auto-submit on phone fallback
+};
 
 // ---- registry ----
 async function loadPets() {
