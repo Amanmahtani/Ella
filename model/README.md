@@ -52,6 +52,30 @@ python enroll_to_db.py path/to/ella_nose.jpg \
 python identify.py path/to/found_dog.jpg
 ```
 
+## Nose detector (YOLO)
+
+The detector finds and tightly crops the nasal planum before embedding. Until
+trained weights exist, `detect_nose.py` falls back to a centre crop and warns.
+
+Train it on boxed noses (one class), then it is picked up automatically:
+
+```bash
+# 1. Lay out labelled data per detector_data.yaml:
+#      data_detector/images/{train,val}/*.jpg
+#      data_detector/labels/{train,val}/*.txt   (lines: `0 cx cy w h`, normalised)
+#    Roboflow / CVAT / Label Studio all export this format.
+
+# 2. Train (writes weights/nose_yolo.pt)
+python train_detector.py --data detector_data.yaml --epochs 100
+
+# 3. Test detection on an image (saves a crop + an annotated preview)
+python detect_nose.py path/to/pet.jpg
+```
+
+`detect_nose.py` looks for the weights at `weights/nose_yolo.pt`, overridable via
+the `ELLA_NOSE_WEIGHTS` environment variable. Once present, `enroll_to_db.py` and
+`identify.py` crop to the nose automatically with no code change.
+
 ## Training (where accuracy comes from)
 
 ```bash
@@ -68,7 +92,8 @@ multi-frame enrolments matter more than any model swap.
 ## What is real vs stub in this scaffold
 
 - `embed.py`, `preprocess.py`, `db.py`, `enroll_to_db.py`, `identify.py`,
-  `dataset.py`, `arcface.py`, `train.py`: real, runnable.
-- `detect_nose.py`: real YOLO wrapper, but with no trained nose-detector weights
-  it falls back to a centre crop and warns. Train or drop in a YOLO nose model
-  to make it real.
+  `dataset.py`, `arcface.py`, `train.py`, `train_detector.py`: real, runnable.
+- `detect_nose.py`: real YOLO wrapper with a detection + crop CLI. With no
+  trained weights yet it falls back to a centre crop and warns. Run
+  `train_detector.py` on boxed noses (or drop in a YOLO nose model at
+  `weights/nose_yolo.pt`) to make it real.
