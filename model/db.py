@@ -37,6 +37,7 @@ def enroll_pet(
     owner_name: str | None = None,
     owner_phone: str | None = None,
     owner_email: str | None = None,
+    owner_address: str | None = None,
     region: str = "BLR",
     frame_count: int | None = None,
     quality_score: float | None = None,
@@ -55,6 +56,7 @@ def enroll_pet(
             p_owner_name => %(owner_name)s,
             p_owner_phone => %(owner_phone)s,
             p_owner_email => %(owner_email)s,
+            p_owner_address => %(owner_address)s,
             p_region => %(region)s,
             p_frame_count => %(frame_count)s,
             p_quality_score => %(quality_score)s,
@@ -102,7 +104,7 @@ def locals_to_params(d: dict) -> dict:
     keys = {
         "name", "species", "modality", "embedding", "model_id",
         "microchip_number", "breed", "owner_name", "owner_phone",
-        "owner_email", "region", "frame_count", "quality_score",
+        "owner_email", "owner_address", "region", "frame_count", "quality_score",
         "organization_id",
     }
     return {k: d[k] for k in keys}

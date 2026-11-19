@@ -129,6 +129,51 @@ def dashboard() -> FileResponse:
     return _page("dashboard.html")
 
 
+@app.get("/pet/{uid}")
+def pet_page(uid: str) -> FileResponse:
+    return _page("pet.html")
+
+
+@app.get("/api/pet")
+def pet_detail(uid: str) -> JSONResponse:
+    """Full pet profile including owner contact. This is the OWNER / clinic view.
+    In production it must be gated to the owner or an authorised clinic; the
+    public (anon) path stays PII-free and uses the relay instead."""
+    conn = db.connect(role="service_role")
+    with conn.cursor() as cur:
+        cur.execute("""
+            select p.name, p.species, p.breed, p.color_markings, p.photo_url,
+                   p.microchip_number, p.is_lost, p.created_at,
+                   p.owner_name, p.owner_phone, p.owner_email, p.owner_address,
+                   o.name, o.is_verified
+            from pets p left join organizations o on o.id = p.organization_id
+            where p.ella_uid = %s
+        """, (uid,))
+        r = cur.fetchone()
+        if not r:
+            conn.close()
+            return JSONResponse({"ok": False, "error": "not found"}, status_code=404)
+        cur.execute("""
+            select action, outcome, similarity, created_at
+            from verification_logs where pet_id = (select id from pets where ella_uid=%s)
+            order by created_at desc limit 12
+        """, (uid,))
+        history = [
+            {"action": h[0], "outcome": h[1],
+             "similarity": float(h[2]) if h[2] is not None else None, "at": h[3].isoformat()}
+            for h in cur.fetchall()
+        ]
+    conn.close()
+    return JSONResponse({
+        "ok": True, "ella_uid": uid,
+        "name": r[0], "species": r[1], "breed": r[2], "color_markings": r[3], "photo_url": r[4],
+        "microchip_number": r[5], "is_lost": r[6], "created_at": r[7].isoformat(),
+        "owner": {"name": r[8], "phone": r[9], "email": r[10], "address": r[11]},
+        "clinic": {"name": r[12], "verified": r[13]},
+        "history": history,
+    })
+
+
 @app.get("/api/stats")
 def stats(clinic: str | None = None) -> JSONResponse:
     conn = db.connect(role="service_role")
@@ -236,7 +281,10 @@ async def enroll(
     region: str = Form("BLR"),
     microchip: str = Form(""),
     clinic: str = Form(""),
+    owner_name: str = Form(""),
     owner_phone: str = Form(""),
+    owner_email: str = Form(""),
+    owner_address: str = Form(""),
 ) -> JSONResponse:
     try:
         vec, first = _embed_files(files)
@@ -250,7 +298,10 @@ async def enroll(
             model_id=DEFAULT_MODEL_ID,
             breed=breed or None,
             microchip_number=microchip or None,
+            owner_name=owner_name or None,
             owner_phone=owner_phone or None,
+            owner_email=owner_email or None,
+            owner_address=owner_address or None,
             region=region,
             frame_count=len(files),
             organization_id=clinic or None,
@@ -295,6 +346,21 @@ async def identify(files: list[UploadFile] = File(...), k: int = Form(3)) -> JSO
         return JSONResponse({"ok": True, "matches": matches})
     except Exception as e:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+
+
+@app.post("/api/pet/lost")
+async def set_lost(ella_uid: str = Form(...), lost: str = Form(...)) -> JSONResponse:
+    is_lost = lost.lower() in ("1", "true", "yes", "on")
+    conn = db.connect(role="service_role")
+    with conn.cursor() as cur:
+        cur.execute("update pets set is_lost=%s, lost_since=case when %s then now() else null end "
+                    "where ella_uid=%s", (is_lost, is_lost, ella_uid))
+        n = cur.rowcount
+    conn.commit()
+    conn.close()
+    if not n:
+        return JSONResponse({"ok": False, "error": "unknown pet"}, status_code=404)
+    return JSONResponse({"ok": True, "is_lost": is_lost})
 
 
 @app.post("/api/relay")

@@ -60,7 +60,7 @@
   .ago { color:var(--muted2); font-size:12px; }
   .empty { color:var(--muted2); padding:14px 8px; }
   .pill { display:inline-flex; align-items:center; gap:7px; background:var(--cream); color:var(--ink);
-    border-radius:20px; padding:7px 13px; font-size:13px; margin:0 8px 8px 0; }
+    border-radius:20px; padding:7px 13px; font-size:13px; margin:0 8px 8px 0; text-decoration:none; }
   .pill .paw { width:13px; height:13px; color:var(--ink); }
   .pavatar { width:22px; height:22px; border-radius:50%; object-fit:cover; }
   .savatar { width:28px; height:28px; border-radius:50%; object-fit:cover; vertical-align:middle; margin-right:8px; }
@@ -157,7 +157,7 @@ function loadScans() {
     $("scanRows").innerHTML = rows.map(s => {
       const pct = s.similarity!=null ? Math.round(s.similarity*100)+"%" : "—";
       const av = s.photo_url ? `<img class="savatar" src="${s.photo_url}">` : "";
-      const who = s.name ? `${av}${s.name} <span class="uid">${s.ella_uid||""}</span>` : '<span class="uid">unknown</span>';
+      const who = s.name ? `${av}<a href="/pet/${s.ella_uid}" style="color:inherit;text-decoration:none">${s.name}</a> <span class="uid">${s.ella_uid||""}</span>` : '<span class="uid">unknown</span>';
       return `<tr>
         <td data-label="Pet">${who}</td>
         <td data-label="Action">${s.action}</td>
@@ -170,8 +170,8 @@ function loadScans() {
 function renderPets(q="") {
   const list = allPets.filter(p => (p.name+" "+p.ella_uid).toLowerCase().includes(q.toLowerCase()));
   $("registry").innerHTML = list.length ? list.map(p =>
-    `<span class="pill">${p.photo_url ? `<img class="pavatar" src="${p.photo_url}">` : `<svg class="paw"><use href="#paw"/></svg>`}<b>${p.name}</b>
-      <span class="uid">${p.ella_uid}</span></span>`).join("")
+    `<a class="pill" href="/pet/${p.ella_uid}">${p.photo_url ? `<img class="pavatar" src="${p.photo_url}">` : `<svg class="paw"><use href="#paw"/></svg>`}<b>${p.name}</b>
+      <span class="uid">${p.ella_uid}</span></a>`).join("")
     : '<span class="chip">No pets yet.</span>';
 }
 function loadPets() {

@@ -96,6 +96,9 @@
   .reg-row { display:flex; gap:10px; margin-top:10px; }
   .reg-row select { flex:1; background:var(--panel); border:1px solid var(--line); color:var(--ink);
     padding:12px; border-radius:12px; font-size:15px; -webkit-appearance:none; appearance:none; }
+  .namebar > input { margin-top:10px; }
+  .namebar > input:first-child { margin-top:0; }
+  .reg-label { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; margin:16px 0 2px; }
 
   .cap { max-width:680px; margin:12px auto 0; display:flex; gap:10px; }
   .cap button { flex:1; border:0; border-radius:13px; padding:15px; font-size:16px; font-weight:800; cursor:pointer;
@@ -121,6 +124,7 @@
   .reunite { flex:0 0 auto; background:var(--ok); color:#06120c; border:0; border-radius:10px; padding:10px 13px; font-weight:800; font-size:13px; cursor:pointer; }
   .reunite:disabled { opacity:.6; }
   .reunited { color:#1f7a50; font-weight:700; font-size:13px; flex:0 0 auto; }
+  .profilelink { display:inline-block; margin-top:7px; color:var(--accent2); font-size:12px; font-weight:700; text-decoration:none; }
   .found-h { color:var(--ok); font-weight:800; font-size:14px; margin:4px 2px 2px; }
   .uid { font-family:ui-monospace,Menlo,monospace; font-size:12px; background:var(--bg2); color:var(--cream); padding:2px 7px; border-radius:6px; }
   .bar { height:8px; background:var(--line); border-radius:5px; margin-top:10px; overflow:hidden; }
@@ -197,7 +201,11 @@
     <select id="petSpecies"><option value="cat">Cat</option><option value="dog">Dog</option></select>
     <select id="petClinic"><option value="">No clinic</option></select>
   </div>
-  <input type="text" id="ownerPhone" placeholder="Owner phone (optional)" style="margin-top:10px">
+  <div class="reg-label">Owner details (private — shown on the pet's profile)</div>
+  <input type="text" id="ownerName" placeholder="Owner name">
+  <input type="text" id="ownerPhone" placeholder="Phone">
+  <input type="text" id="ownerEmail" placeholder="Email">
+  <input type="text" id="ownerAddress" placeholder="Address">
 </div>
 
 <div class="cap">
@@ -378,6 +386,7 @@ function matchCard(m) {
       <div class="top"><span class="name">${m.name}${lost}</span><span class="uid">${m.ella_uid}</span></div>
       <div style="color:var(--muted2)">${m.species||"pet"} · match ${pct}%</div>
       <div class="bar"><span style="width:${pct}%"></span></div>
+      <a class="profilelink" href="/pet/${m.ella_uid}">View full profile →</a>
     </div>
     <button class="reunite" onclick="reunite('${m.ella_uid}', this)">Notify owner</button>
   </div>`;
@@ -411,7 +420,10 @@ async function sendEnroll(blobs) {
   blobs.forEach((b,i)=>fd.append("files", b, "scan"+i+".jpg"));
   fd.append("name", name); fd.append("species", $("petSpecies").value);
   fd.append("region","BLR"); fd.append("clinic", $("petClinic").value);
+  fd.append("owner_name", $("ownerName").value);
   fd.append("owner_phone", $("ownerPhone").value);
+  fd.append("owner_email", $("ownerEmail").value);
+  fd.append("owner_address", $("ownerAddress").value);
   try {
     const d = await (await fetch("/api/enroll",{method:"POST",body:fd})).json();
     out.innerHTML = d.ok
