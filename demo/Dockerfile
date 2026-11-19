@@ -8,10 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# CPU-only torch keeps the image small and the build fast. Everything else from PyPI.
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
-    && pip install --no-cache-dir \
-      transformers numpy pillow opencv-python-headless \
+# torch from PyPI works on both Intel and Apple-Silicon machines (the pytorch CPU
+# index has no arm64 Linux wheels, which breaks the build on M1/M2/M3 Macs).
+RUN pip install --no-cache-dir \
+      torch transformers numpy pillow opencv-python-headless \
       "psycopg[binary]" fastapi "uvicorn[standard]" python-multipart
 
 # Bake the DINOv2 weights into the image so the first request is fast.
