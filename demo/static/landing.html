@@ -55,6 +55,16 @@
   .step h3 { margin:0; font-size:16px; }
   .step p { margin:3px 0 0; color:var(--muted); font-size:14px; }
 
+  .mypets { margin:38px auto 0; }
+  .mypets h2 { font-size:14px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin:0 0 14px; text-align:center; }
+  .petgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); gap:14px; }
+  .petcard { text-decoration:none; color:var(--cream); text-align:center; }
+  .petcard .pimg { width:72px; height:72px; border-radius:50%; object-fit:cover; margin:0 auto 8px; display:block;
+    border:2px solid var(--line-dk); }
+  .petcard .pimg.ph { display:flex; align-items:center; justify-content:center; font-size:30px; background:var(--bg2); }
+  .petcard .pname { font-size:14px; font-weight:700; }
+  .petcard .plost { font-size:10px; font-weight:800; color:#fff; background:var(--scan); padding:1px 7px; border-radius:20px; display:inline-block; margin-top:3px; }
+
   .foot { text-align:center; color:var(--muted2); font-size:12px; margin:30px 0 0; }
 </style>
 </head>
@@ -82,12 +92,6 @@
     <p class="tag"><b>Face ID for your pet's nose.</b></p>
     <p class="sub">Every nose print is unique. No microchip, no implant, just a photo.</p>
 
-    <div class="stats">
-      <div><div class="n" id="sPets">—</div><div class="l">Pets</div></div>
-      <div><div class="n" id="sScans">—</div><div class="l">Scans</div></div>
-      <div><div class="n" id="sReunions">—</div><div class="l">Reunions</div></div>
-    </div>
-
     <a class="cta" href="/scan">Get Started  →</a>
     <a class="link2" href="/dashboard">View the <b>dashboard</b></a>
   </header>
@@ -96,6 +100,11 @@
     <div class="step"><div class="num">1</div><div><h3>Snap the nose</h3><p>Point the camera at your pet's nose. We detect and capture it.</p></div></div>
     <div class="step"><div class="num">2</div><div><h3>We fingerprint it</h3><p>An AI model turns the nose's unique ridges into a secure digital print.</p></div></div>
     <div class="step"><div class="num">3</div><div><h3>Reunite instantly</h3><p>Anyone who finds your pet scans the nose and gets your contact relay. No chip reader needed.</p></div></div>
+  </div>
+
+  <div class="mypets" id="mypets" style="display:none">
+    <h2>Your pets</h2>
+    <div class="petgrid" id="petGrid"></div>
   </div>
 
   <p class="foot">Ella · nose-print biometric pet ID · demo</p>
@@ -111,11 +120,18 @@
       s.style.setProperty("--r",(Math.random()*60-30)+"deg");
       s.style.animationDuration=(9+Math.random()*9)+"s"; s.style.animationDelay=(-Math.random()*12)+"s";
       layer.appendChild(s);} })();
-  // live stats
-  fetch("/api/stats").then(r=>r.json()).then(d=>{
-    document.getElementById("sPets").textContent=d.pets;
-    document.getElementById("sScans").textContent=d.scans;
-    document.getElementById("sReunions").textContent=d.reunions;
+  // your pets
+  const esc = (s)=>(s==null?"":String(s)).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+  fetch("/api/pets").then(r=>r.json()).then(d=>{
+    if (!d.pets || !d.pets.length) return;
+    document.getElementById("mypets").style.display = "";
+    document.getElementById("petGrid").innerHTML = d.pets.map(p => {
+      const img = p.photo_url
+        ? `<img class="pimg" src="${esc(p.photo_url)}" alt="${esc(p.name)}">`
+        : `<div class="pimg ph">${p.species==="cat"?"🐱":"🐶"}</div>`;
+      const lost = p.is_lost ? '<div class="plost">LOST</div>' : '';
+      return `<a class="petcard" href="/pet/${encodeURIComponent(p.ella_uid)}">${img}<div class="pname">${esc(p.name)}</div>${lost}</a>`;
+    }).join("");
   }).catch(()=>{});
 </script>
 </body>

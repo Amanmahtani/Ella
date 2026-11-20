@@ -113,7 +113,10 @@ def seed_clinics() -> None:
 
 
 def _page(name: str) -> FileResponse:
-    return FileResponse(os.path.join(HERE, "static", name))
+    # no-cache so a rebuilt page is always picked up (avoids stale HTML calling a
+    # changed API, e.g. the old "undefined% match rate").
+    return FileResponse(os.path.join(HERE, "static", name),
+                        headers={"Cache-Control": "no-cache, must-revalidate"})
 
 
 @app.get("/")
