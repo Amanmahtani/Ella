@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ella — Nose Scanner</title>
+<style>
+  /* Tuxedo-cat theme: jacket black, shirt cream, a gold bow-tie accent. */
+  :root {
+    --bg:#0c0c0f;          /* the black jacket */
+    --bg2:#16161b;
+    --cream:#f6f4ee;        /* the white shirt */
+    --panel:#ffffff;
+    --ink:#15151a;
+    --line:#e7e2d7;
+    --line-dk:#2a2a31;
+    --muted:#b7b2a8;        /* muted on dark */
+    --muted2:#6f6a60;       /* muted on cream */
+    --gold:#d9a94e;         /* bow-tie gold */
+    --scan:#ff3b4e;         /* scanner red */
+    --ok:#4cc38a;
+    --radius:16px;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body {
+    margin:0; color:var(--cream);
+    background:
+      radial-gradient(1200px 500px at 50% -10%, #20202a 0%, transparent 60%),
+      linear-gradient(180deg, var(--bg) 0%, #090909 100%);
+    background-attachment:fixed; min-height:100vh;
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    padding:0 14px 44px;
+  }
+
+  /* floating paw prints (tuxedo-white) */
+  .paws { position:fixed; inset:0; overflow:hidden; pointer-events:none; z-index:0; }
+  .paws svg { position:absolute; color:#fff; opacity:0; animation:drift linear infinite; }
+  @keyframes drift {
+    0%   { transform:translateY(30px) rotate(var(--r,0deg)) scale(.9); opacity:0; }
+    12%  { opacity:.16; }
+    88%  { opacity:.16; }
+    100% { transform:translateY(-130px) rotate(calc(var(--r,0deg) + 16deg)) scale(1); opacity:0; }
+  }
+  .content { position:relative; z-index:1; }
+  .topnav { max-width:680px; margin:10px auto 0; display:flex; justify-content:flex-end; gap:8px; }
+  .topnav a { color:var(--muted); text-decoration:none; font-size:13px; font-weight:600;
+    border:1px solid var(--line-dk); padding:6px 11px; border-radius:9px; }
+
+  header { max-width:680px; margin:0 auto; padding:22px 0 6px; text-align:center; }
+  .bowwrap { display:flex; align-items:center; justify-content:center; gap:10px; }
+  .bow { width:46px; height:24px; }
+  h1 { font-size:22px; margin:0; letter-spacing:.3px; }
+  .sub { color:var(--muted); font-size:13px; margin:5px 0 0; }
+  .sub b { color:var(--gold); font-weight:600; }
+
+  /* Ella animated logo */
+  .logo { position:relative; width:118px; height:118px; margin:6px auto 4px; }
+  .logo img { width:100%; height:100%; border-radius:50%; object-fit:cover;
+    border:3px solid var(--cream); box-shadow:0 0 0 2px #000, 0 10px 26px rgba(0,0,0,.55);
+    position:relative; z-index:2; animation:breathe 4.5s ease-in-out infinite; }
+  .logo .ring { position:absolute; inset:-9px; border-radius:50%;
+    border:2px dashed rgba(255,59,78,.75); z-index:1; animation:spin 9s linear infinite; }
+  .logo .ping { position:absolute; inset:0; border-radius:50%;
+    border:2px solid var(--scan); z-index:1; animation:ping 2.6s ease-out infinite; }
+  .logo .minibow { position:absolute; left:50%; bottom:-7px; width:42px; height:21px;
+    transform:translateX(-50%); z-index:3; filter:drop-shadow(0 2px 3px rgba(0,0,0,.5)); }
+  @keyframes breathe { 50% { transform:scale(1.045); } }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  @keyframes ping { 0% { transform:scale(1); opacity:.55; } 100% { transform:scale(1.5); opacity:0; } }
+
+  .modes { max-width:680px; margin:16px auto 0; display:flex;
+    background:rgba(255,255,255,.06); border:1px solid var(--line-dk); border-radius:13px; padding:4px; backdrop-filter:blur(4px); }
+  .modes button { flex:1; border:0; background:transparent; color:var(--muted);
+    padding:10px; border-radius:10px; font-size:14px; font-weight:700; cursor:pointer; transition:.15s; }
+  .modes button.on { background:var(--cream); color:var(--ink); }
+
+  .stage { max-width:680px; margin:14px auto 0; position:relative; border-radius:var(--radius);
+    overflow:hidden; background:#000; aspect-ratio:3/4; border:2px solid var(--cream);
+    box-shadow:0 10px 40px rgba(0,0,0,.5); }
+  video { width:100%; height:100%; object-fit:cover; display:block; }
+  video.mirror { transform:scaleX(-1); }
+  canvas#ov { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .hud { position:absolute; left:0; right:0; bottom:0; padding:12px 14px 14px;
+    background:linear-gradient(to top, rgba(0,0,0,.65), transparent); color:#fff; font-size:12px; }
+  .hud .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--scan);
+    margin-right:6px; vertical-align:1px; animation:blink 1s infinite; }
+  @keyframes blink { 50% { opacity:.3; } }
+  .guide { position:absolute; top:12px; left:0; right:0; text-align:center; color:#fff;
+    font-size:12px; text-shadow:0 1px 3px rgba(0,0,0,.6); }
+
+  .namebar { max-width:680px; margin:12px auto 0; display:none; }
+  .namebar.show { display:block; }
+  .namebar input { width:100%; background:var(--panel); border:1px solid var(--line);
+    color:var(--ink); padding:12px 14px; border-radius:12px; font-size:15px; }
+  .namebar input::placeholder { color:var(--muted2); }
+  .reg-row { display:flex; gap:10px; margin-top:10px; }
+  .reg-row select { flex:1; background:var(--panel); border:1px solid var(--line); color:var(--ink);
+    padding:12px; border-radius:12px; font-size:15px; -webkit-appearance:none; appearance:none; }
+  .namebar > input { margin-top:10px; }
+  .namebar > input:first-child { margin-top:0; }
+  .reg-label { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; margin:16px 0 2px; }
+
+  .cap { max-width:680px; margin:12px auto 0; display:flex; gap:10px; }
+  .cap button { flex:1; border:0; border-radius:13px; padding:15px; font-size:16px; font-weight:800; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; gap:9px; }
+  #captureBtn { background:var(--ink); color:#fff; border:1px solid #000;
+    box-shadow:0 6px 18px rgba(0,0,0,.4); }
+  #captureBtn .pawbtn { width:20px; height:20px; color:var(--gold); }
+  #captureBtn:disabled { opacity:.6; }
+  .ghost { background:var(--cream)!important; color:var(--ink)!important; flex:0 0 auto!important; width:56px; font-size:20px!important; }
+
+  .snap { max-width:680px; margin:10px auto 0; text-align:center; }
+  .snap img { max-height:120px; border-radius:12px; border:2px solid var(--cream); }
+
+  .result { max-width:680px; margin:14px auto 0; }
+  .match { background:var(--panel); border:1px solid var(--line); border-radius:13px; padding:14px 16px; margin-top:9px; color:var(--ink);
+    display:flex; gap:12px; align-items:center; }
+  .match.mut { color:var(--muted2); display:block; }
+  .match .info { flex:1; min-width:0; }
+  .match .top { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .match .name { font-weight:800; font-size:16px; }
+  .mphoto { width:56px; height:56px; border-radius:12px; object-fit:cover; flex:0 0 auto; border:1px solid var(--line); }
+  .lostbadge { font-size:10px; font-weight:800; color:#fff; background:var(--scan); padding:2px 7px; border-radius:20px; margin-left:6px; vertical-align:2px; }
+  .reunite { flex:0 0 auto; background:var(--ok); color:#06120c; border:0; border-radius:10px; padding:10px 13px; font-weight:800; font-size:13px; cursor:pointer; }
+  .reunite:disabled { opacity:.6; }
+  .reunited { color:#1f7a50; font-weight:700; font-size:13px; flex:0 0 auto; }
+  .profilelink { display:inline-block; margin-top:7px; color:var(--accent2); font-size:12px; font-weight:700; text-decoration:none; }
+  .found-h { color:var(--ok); font-weight:800; font-size:14px; margin:4px 2px 2px; }
+  .uid { font-family:ui-monospace,Menlo,monospace; font-size:12px; background:var(--bg2); color:var(--cream); padding:2px 7px; border-radius:6px; }
+  .bar { height:8px; background:var(--line); border-radius:5px; margin-top:10px; overflow:hidden; }
+  .bar > span { display:block; height:100%; background:linear-gradient(90deg,var(--gold),var(--ok)); }
+  .ok{color:var(--ok)} .bad{color:var(--scan)}
+
+  .note { max-width:680px; margin:16px auto 0; color:var(--muted); font-size:12px; text-align:center; line-height:1.5; }
+
+  .pets { max-width:680px; margin:18px auto 0; }
+  .pets h2 { font-size:13px; color:var(--muted); margin:0 0 10px; font-weight:700; display:flex; align-items:center; gap:7px; }
+  .pets h2 .pawmini { width:15px; height:15px; color:var(--gold); }
+  .petlist { display:flex; flex-wrap:wrap; gap:8px; }
+  .pill { background:var(--cream); color:var(--ink); border-radius:20px; padding:7px 13px; font-size:13px; display:flex; align-items:center; gap:6px; }
+  .pill .pawmini { width:13px; height:13px; color:var(--ink); }
+  .pill .pavatar { width:20px; height:20px; border-radius:50%; object-fit:cover; }
+  .pill .uid { background:var(--ink); }
+
+  .fallback { max-width:680px; margin:14px auto 0; display:none; }
+  .fallback.show { display:block; }
+  .fallback .drop { border:2px dashed var(--line-dk); border-radius:13px; padding:24px; text-align:center; color:var(--muted); cursor:pointer; }
+
+  .spin { display:inline-block; width:15px; height:15px; border:2px solid rgba(255,255,255,.4); border-top-color:#fff; border-radius:50%; animation:sp .7s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- reusable paw + bow-tie shapes -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="paw" viewBox="0 0 100 100">
+    <ellipse cx="27" cy="41" rx="9" ry="12"/>
+    <ellipse cx="44" cy="28" rx="9" ry="13"/>
+    <ellipse cx="62" cy="29" rx="9" ry="13"/>
+    <ellipse cx="79" cy="43" rx="9" ry="12"/>
+    <path d="M50 50 C32 50 22 65 27 78 C31 89 45 91 50 91 C55 91 69 89 73 78 C78 65 68 50 50 50 Z"/>
+  </symbol>
+</svg>
+
+<!-- drifting paws -->
+<div class="paws" id="paws"></div>
+
+<div class="content">
+<div class="topnav"><a href="/">Home</a><a href="/dashboard">Dashboard</a></div>
+<header>
+  <div class="logo">
+    <span class="ring"></span>
+    <span class="ping"></span>
+    <img src="/static/ella.jpg" alt="Ella the tuxedo cat">
+    <svg class="minibow" viewBox="0 0 120 60" aria-hidden="true">
+      <path d="M8 8 L56 30 L8 52 Z" fill="#111"/>
+      <path d="M112 8 L64 30 L112 52 Z" fill="#111"/>
+      <rect x="51" y="19" width="18" height="22" rx="5" fill="#d9a94e"/>
+    </svg>
+  </div>
+  <h1>Ella</h1>
+  <p class="sub">Nose-print ID for pets. <b>Face ID, for your cat's nose.</b></p>
+</header>
+
+<div class="modes">
+  <button id="mIdentify" class="on">Identify</button>
+  <button id="mRegister">Register</button>
+</div>
+
+<div class="stage" id="stage">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="ov"></canvas>
+  <div class="guide" id="guide">Center the nose in the frame</div>
+  <div class="hud"><span class="dot"></span><span id="hudText">Scanning for nose-print...</span></div>
+</div>
+
+<div class="namebar" id="namebar">
+  <input type="text" id="petName" placeholder="Pet's name (e.g. Ella)">
+  <div class="reg-row">
+    <select id="petSpecies"><option value="cat">Cat</option><option value="dog">Dog</option></select>
+    <select id="petClinic"><option value="">No clinic</option></select>
+  </div>
+  <div class="reg-label">Owner details (private — shown on the pet's profile)</div>
+  <input type="text" id="ownerName" placeholder="Owner name">
+  <input type="text" id="ownerPhone" placeholder="Phone">
+  <input type="text" id="ownerEmail" placeholder="Email">
+  <input type="text" id="ownerAddress" placeholder="Address">
+</div>
+
+<div class="cap">
+  <button id="captureBtn"><svg class="pawbtn"><use href="#paw"/></svg><span id="capLabel">Scan &amp; Identify</span></button>
+  <button id="flipBtn" class="ghost" title="Switch camera">⟳</button>
+</div>
+
+<div class="snap" id="snap"></div>
+<div class="result" id="result"></div>
+
+<div class="fallback" id="fallback">
+  <div class="drop" id="drop">
+    Camera unavailable here. Tap to take or choose a nose photo.
+    <input type="file" id="fileInput" accept="image/*" capture="environment" hidden>
+  </div>
+</div>
+
+<p class="note" id="note">
+  The red points are a live scanning overlay to guide capture. Precise per-ridge nose mapping
+  turns on once the keypoint model is trained on real nose data.
+</p>
+
+<div class="pets">
+  <h2><svg class="pawmini"><use href="#paw"/></svg> Registered pets (<span id="petCount">0</span>)</h2>
+  <div class="petlist" id="petList"></div>
+</div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let mode = "identify";
+let facing = "environment";
+let stream = null, rafId = null, points = [], cameraReady = false;
+// capture/scan state (fingerprint-style lock-on + quality gate)
+let scanning = false, scanProgress = 0, scanResult = "";   // scanResult: "" | "ok" | "fail"
+const SHARP_MIN = 55, BRIGHT_MIN = 32, BRIGHT_MAX = 238;
+
+// ---- drifting paw prints ----
+(function makePaws() {
+  const layer = $("paws"), n = 8;
+  for (let i = 0; i < n; i++) {
+    const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const u = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    u.setAttribute("href", "#paw"); s.appendChild(u);
+    const size = 22 + Math.random() * 34;
+    s.setAttribute("viewBox", "0 0 100 100");
+    s.style.width = s.style.height = size + "px";
+    s.style.left = Math.random() * 100 + "%";
+    s.style.top = (10 + Math.random() * 85) + "%";
+    s.style.setProperty("--r", (Math.random() * 60 - 30) + "deg");
+    s.style.animationDuration = (9 + Math.random() * 9) + "s";
+    s.style.animationDelay = (-Math.random() * 12) + "s";
+    layer.appendChild(s);
+  }
+})();
+
+// ---- camera ----
+async function startCamera() {
+  stopCamera();
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing }, audio: false });
+    const v = $("video");
+    v.srcObject = stream;
+    v.classList.toggle("mirror", facing === "user");
+    await v.play();
+    cameraReady = true;
+    $("fallback").classList.remove("show"); $("guide").style.display = "";
+    sizeCanvas(); seedPoints(); loop(); updateCapLabel();
+  } catch (e) {
+    cameraReady = false;
+    $("fallback").classList.add("show");
+    $("guide").style.display = "none";
+    $("hudText").textContent = "Live camera needs https — tap the button to snap a photo";
+    updateCapLabel();
+  }
+}
+function updateCapLabel() {
+  const base = mode === "identify" ? "Identify" : "Register";
+  $("capLabel").textContent = (cameraReady ? "Scan & " : "Take Photo & ") + base;
+}
+function stopCamera() {
+  if (rafId) cancelAnimationFrame(rafId);
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null;
+}
+function sizeCanvas() {
+  const c = $("ov"), r = $("stage").getBoundingClientRect();
+  c.width = r.width; c.height = r.height;
+}
+window.addEventListener("resize", sizeCanvas);
+
+// ---- scanning overlay ----
+function seedPoints() {
+  points = [];
+  for (let i = 0; i < 54; i++) {
+    const a = Math.random() * Math.PI * 2, rr = Math.pow(Math.random(), 0.7);
+    points.push({ bx:.5 + Math.cos(a)*rr*.17, by:.52 + Math.sin(a)*rr*.2, ph:Math.random()*Math.PI*2, sp:.6 + Math.random()*.8 });
+  }
+}
+function loop() {
+  const c = $("ov"), ctx = c.getContext("2d"), W = c.width, H = c.height, t = performance.now()/1000;
+  ctx.clearRect(0,0,W,H);
+  const bw = Math.min(W,H)*.56, bx = (W-bw)/2, by = (H-bw)/2, L = 22;
+  const cx = W/2, cy = by + bw/2, R = bw/2;
+
+  // colour by state: red scanning, green captured, red fail
+  const col = scanResult==="ok" ? "76,195,138" : scanResult==="fail" ? "255,59,78" : "255,59,78";
+
+  // reticle corners
+  ctx.strokeStyle = `rgba(${col},.85)`; ctx.lineWidth = 3;
+  const corner = (x,y,dx,dy) => { ctx.beginPath(); ctx.moveTo(x,y+dy*L); ctx.lineTo(x,y); ctx.lineTo(x+dx*L,y); ctx.stroke(); };
+  corner(bx,by,1,1); corner(bx+bw,by,-1,1); corner(bx,by+bw,1,-1); corner(bx+bw,by+bw,-1,-1);
+
+  if (scanning || scanResult) {
+    // progress ring filling clockwise from the top (fingerprint-style)
+    ctx.strokeStyle = `rgba(${col},.25)`; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.arc(cx, cy, R+10, 0, Math.PI*2); ctx.stroke();
+    ctx.strokeStyle = `rgba(${col},.95)`; ctx.lineWidth = 5; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.arc(cx, cy, R+10, -Math.PI/2, -Math.PI/2 + Math.PI*2*scanProgress); ctx.stroke();
+    ctx.lineCap = "butt";
+  } else {
+    // idle sweep line
+    const sy = by + ((Math.sin(t*1.6)+1)/2)*bw;
+    const g = ctx.createLinearGradient(0,sy-14,0,sy+14);
+    g.addColorStop(0,`rgba(${col},0)`); g.addColorStop(.5,`rgba(${col},.5)`); g.addColorStop(1,`rgba(${col},0)`);
+    ctx.fillStyle = g; ctx.fillRect(bx,sy-14,bw,28);
+  }
+
+  // beads: during a scan they pull inward and tighten (lock-on); jitter more on fail
+  const conv = scanning ? (0.35 + 0.65*(1-scanProgress)) : 1;       // 1 = spread, →0.35 tight
+  const jit = scanResult==="fail" ? 9 : 4;
+  const pts = points.map(p => ({
+    x: cx + (p.bx-0.5)*W*conv + Math.sin(t*p.sp+p.ph)*jit,
+    y: cy + (p.by-0.52)*H*conv + Math.cos(t*p.sp+p.ph)*jit,
+    a: .55 + .45*Math.sin(t*2+p.ph),
+  }));
+  ctx.strokeStyle = `rgba(${col},.12)`; ctx.lineWidth = 1;
+  for (let i=0;i<pts.length;i++) for (let j=i+1;j<pts.length;j++) {
+    const d = Math.hypot(pts[i].x-pts[j].x, pts[i].y-pts[j].y);
+    if (d<46){ ctx.globalAlpha=(1-d/46)*.5; ctx.beginPath(); ctx.moveTo(pts[i].x,pts[i].y); ctx.lineTo(pts[j].x,pts[j].y); ctx.stroke(); }
+  }
+  ctx.globalAlpha=1; ctx.shadowColor=`rgba(${col},.9)`; ctx.shadowBlur=8;
+  for (const p of pts){ ctx.fillStyle=`rgba(${col},${p.a})`; ctx.beginPath(); ctx.arc(p.x,p.y,2.4,0,Math.PI*2); ctx.fill(); }
+  ctx.shadowBlur=0;
+  rafId = requestAnimationFrame(loop);
+}
+
+// ---- capture (burst of frames for a robust, averaged nose print) ----
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+function grabFrame() {
+  const v = $("video");
+  if (!v.videoWidth) return null;
+  const cv = document.createElement("canvas");
+  cv.width = v.videoWidth; cv.height = v.videoHeight;
+  cv.getContext("2d").drawImage(v, 0, 0);
+  return cv;
+}
+function showSnap(url) { $("snap").innerHTML = `<img src="${url}" alt="capture">`; }
+
+// Quality score of a frame: sharpness (Laplacian variance) + brightness, measured
+// on the central reticle region. Blurry, dark or covered shots score low.
+function frameQuality(cv) {
+  const S = 150, small = document.createElement("canvas");
+  small.width = small.height = S;
+  const side = Math.min(cv.width, cv.height) * 0.6;
+  small.getContext("2d").drawImage(cv, (cv.width-side)/2, (cv.height-side)/2, side, side, 0, 0, S, S);
+  const d = small.getContext("2d").getImageData(0,0,S,S).data;
+  const g = new Float32Array(S*S); let sum = 0;
+  for (let i=0,p=0;i<d.length;i+=4,p++){ const v=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]; g[p]=v; sum+=v; }
+  const bright = sum/(S*S);
+  let ls=0, lsq=0, n=0;
+  for (let y=1;y<S-1;y++) for (let x=1;x<S-1;x++){
+    const i=y*S+x, lap = 4*g[i]-g[i-1]-g[i+1]-g[i-S]-g[i+S];
+    ls+=lap; lsq+=lap*lap; n++;
+  }
+  const sharp = lsq/n - (ls/n)*(ls/n);
+  return { sharp, bright, ok: sharp>=SHARP_MIN && bright>=BRIGHT_MIN && bright<=BRIGHT_MAX };
+}
+
+// Fingerprint-style scan: beads lock on while we grab frames, keep only the
+// sharp/well-lit ones, then "Captured" or "Try again".
+async function runScan(need) {
+  scanning = true; scanResult = ""; scanProgress = 0;
+  $("hudText").textContent = "Hold steady — scanning…";
+  const blobs = []; let lastGood = null, worst = null;
+  const tries = need + 3;
+  for (let i = 0; i < tries; i++) {
+    const cv = grabFrame();
+    if (cv) {
+      const q = frameQuality(cv);
+      worst = q;
+      if (q.ok) { lastGood = cv; blobs.push(await new Promise(r => cv.toBlob(r,"image/jpeg",.9))); }
+    }
+    scanProgress = Math.min(1, blobs.length/need || (i+1)/tries*0.6);
+    if (blobs.length >= need) { scanProgress = 1; break; }
+    await sleep(240);
+  }
+  scanning = false;
+
+  if (blobs.length >= Math.ceil(need/2) && lastGood) {
+    scanResult = "ok"; $("hudText").textContent = "✓ Captured";
+    showSnap(lastGood.toDataURL("image/jpeg", .8));
+    await sleep(650); scanResult = "";
+    return blobs;
+  }
+  // failed quality gate — tell them why
+  scanResult = "fail";
+  let why = "Try again — hold steady and get closer";
+  if (worst) {
+    if (worst.bright < BRIGHT_MIN) why = "Too dark — more light, then try again";
+    else if (worst.bright > BRIGHT_MAX) why = "Too bright — reduce glare, then try again";
+    else if (worst.sharp < SHARP_MIN) why = "Too blurry — hold steady, get closer, try again";
+  }
+  $("hudText").textContent = why;
+  $("result").innerHTML = `<div class="match mut">${why}.</div>`;
+  await sleep(1400); scanResult = "";
+  updateHud();
+  return null;
+}
+function updateHud() {
+  $("hudText").textContent = mode==="identify" ? "Scanning for nose-print..." : "Ready to register";
+}
+
+// ---- modes ----
+function setMode(m) {
+  mode = m;
+  $("mIdentify").classList.toggle("on", m==="identify");
+  $("mRegister").classList.toggle("on", m==="register");
+  $("namebar").classList.toggle("show", m==="register");
+  $("hudText").textContent = m==="identify" ? "Scanning for nose-print..." : "Ready to register";
+  $("result").innerHTML = "";
+  updateCapLabel();
+}
+$("mIdentify").onclick = () => setMode("identify");
+$("mRegister").onclick = () => setMode("register");
+$("flipBtn").onclick = () => { facing = facing==="environment" ? "user" : "environment"; startCamera(); };
+
+// ---- actions ----
+async function runWith(blobs) {
+  if (!blobs || !blobs.length) { $("result").innerHTML = '<span class="bad">No image captured.</span>'; return; }
+  await (mode === "identify" ? sendIdentify(blobs) : sendEnroll(blobs));
+}
+async function busy(fn) {
+  const b = $("captureBtn"); b.disabled = true;
+  $("capLabel").innerHTML = '<span class="spin"></span> Scanning...';
+  try { await fn(); } finally { b.disabled = false; updateCapLabel(); }
+}
+$("captureBtn").onclick = () => {
+  if (!cameraReady) { $("fileInput").click(); return; } // opens camera/picker; onchange submits
+  const n = mode === "register" ? 5 : 3;             // more frames to enrol, fewer to identify
+  busy(async () => { const frames = await runScan(n); if (frames) await runWith(frames); });
+};
+
+function matchCard(m) {
+  const pct = m.similarity!=null ? Math.round(m.similarity*100) : 0;
+  const photo = m.photo_url ? `<img class="mphoto" src="${m.photo_url}" alt="">` : "";
+  const lost = m.is_lost ? '<span class="lostbadge">LOST</span>' : "";
+  return `<div class="match">${photo}
+    <div class="info">
+      <div class="top"><span class="name">${m.name}${lost}</span><span class="uid">${m.ella_uid}</span></div>
+      <div style="color:var(--muted2)">${m.species||"pet"} · match ${pct}%</div>
+      <div class="bar"><span style="width:${pct}%"></span></div>
+      <a class="profilelink" href="/pet/${m.ella_uid}">View full profile →</a>
+    </div>
+    <button class="reunite" onclick="reunite('${m.ella_uid}', this)">Notify owner</button>
+  </div>`;
+}
+async function reunite(uid, btn) {
+  btn.disabled = true; btn.textContent = "Notifying…";
+  const fd = new FormData(); fd.append("ella_uid", uid);
+  try {
+    const d = await (await fetch("/api/relay",{method:"POST",body:fd})).json();
+    btn.outerHTML = d.ok
+      ? `<span class="reunited">✓ Owner alerted (${d.masked})</span>`
+      : `<span class="bad">${d.error}</span>`;
+  } catch (e) { btn.disabled = false; btn.textContent = "Notify owner"; }
+}
+
+async function sendIdentify(blobs) {
+  const fd = new FormData(); blobs.forEach((b,i)=>fd.append("files", b, "scan"+i+".jpg")); fd.append("k", 3);
+  const out = $("result");
+  try {
+    const d = await (await fetch("/api/identify",{method:"POST",body:fd})).json();
+    if (!d.ok) out.innerHTML = `<span class="bad">Error: ${d.error}</span>`;
+    else if (!d.matches.length) out.innerHTML = '<div class="match mut">No match. This pet is not registered, or try a clearer, closer nose shot.</div>';
+    else out.innerHTML = '<div class="found-h">🎉 Found a match!</div>' + d.matches.map(matchCard).join("");
+  } catch (e) { out.innerHTML = `<span class="bad">${e}</span>`; }
+}
+
+async function sendEnroll(blobs) {
+  const name = $("petName").value.trim(), out = $("result");
+  if (!name) { out.innerHTML = '<span class="bad">Enter a name first (Register mode).</span>'; return; }
+  const fd = new FormData();
+  blobs.forEach((b,i)=>fd.append("files", b, "scan"+i+".jpg"));
+  fd.append("name", name); fd.append("species", $("petSpecies").value);
+  fd.append("region","BLR"); fd.append("clinic", $("petClinic").value);
+  fd.append("owner_name", $("ownerName").value);
+  fd.append("owner_phone", $("ownerPhone").value);
+  fd.append("owner_email", $("ownerEmail").value);
+  fd.append("owner_address", $("ownerAddress").value);
+  try {
+    const d = await (await fetch("/api/enroll",{method:"POST",body:fd})).json();
+    out.innerHTML = d.ok
+      ? `<div class="match">${d.photo_url?`<img class="mphoto" src="${d.photo_url}">`:""}
+          <div class="info"><span class="ok">Registered ${name}</span> from ${d.frames} frames.<br>
+          ID: <span class="uid">${d.ella_uid}</span></div></div>`
+      : `<span class="bad">Error: ${d.error}</span>`;
+    if (d.ok) { $("petName").value = ""; loadPets(); }
+  } catch (e) { out.innerHTML = `<span class="bad">${e}</span>`; }
+}
+
+// ---- fallback upload (phone over http: single photo) ----
+$("drop").onclick = () => $("fileInput").click();
+function fileToCanvas(file) {
+  return new Promise((res) => {
+    const img = new Image();
+    img.onload = () => { const cv = document.createElement("canvas");
+      cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+      cv.getContext("2d").drawImage(img, 0, 0); res(cv); };
+    img.onerror = () => res(null);
+    img.src = URL.createObjectURL(file);
+  });
+}
+$("fileInput").onchange = async () => {
+  const f = $("fileInput").files[0];
+  if (!f) return;
+  showSnap(URL.createObjectURL(f));
+  if (cameraReady) return;
+  const cv = await fileToCanvas(f);
+  const q = cv ? frameQuality(cv) : { ok: true };
+  if (!q.ok) {
+    const why = q.bright<BRIGHT_MIN ? "too dark" : q.bright>BRIGHT_MAX ? "too bright" : "too blurry";
+    $("result").innerHTML = `<div class="match mut">That photo was ${why} — try a clearer, closer nose shot.</div>`;
+    return;
+  }
+  await busy(async () => { await runWith([f]); }); // auto-submit on phone fallback
+};
+
+// ---- registry ----
+async function loadPets() {
+  try {
+    const d = await (await fetch("/api/pets")).json();
+    $("petCount").textContent = d.count;
+    $("petList").innerHTML = d.pets.map(p =>
+      `<span class="pill">${p.photo_url ? `<img class="pavatar" src="${p.photo_url}">` : `<svg class="pawmini"><use href="#paw"/></svg>`}<b>${p.name}</b> <span class="uid">${p.ella_uid}</span></span>`).join("")
+      || '<span style="color:var(--muted)">None yet.</span>';
+  } catch (e) {}
+}
+
+// populate clinic dropdown for registration
+fetch("/api/clinics").then(r=>r.json()).then(d=>{
+  const sel = $("petClinic");
+  d.clinics.forEach(c => { const o=document.createElement("option"); o.value=c.id; o.textContent=c.name; sel.appendChild(o); });
+}).catch(()=>{});
+
+setMode("identify"); startCamera(); loadPets();
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+**/__pycache__/
+**/*.pyc
+**/.venv/
+model/weights/
+model/data/
+model/data_detector/
+model/runs/
+**/*.pt
+**/*.pth
+.git/

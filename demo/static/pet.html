@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ella — Pet Profile</title>
+<style>
+  :root {
+    --bg:#0c0c0f; --bg2:#16161b; --cream:#f6f4ee; --panel:#ffffff; --ink:#15151a;
+    --line:#e7e2d7; --line-dk:#2a2a31; --muted:#b7b2a8; --muted2:#6f6a60;
+    --gold:#d9a94e; --scan:#ff3b4e; --ok:#4cc38a; --radius:16px;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; color:var(--cream);
+    background:radial-gradient(1200px 500px at 50% -10%, #20202a 0%, transparent 60%), linear-gradient(180deg,var(--bg),#090909);
+    background-attachment:fixed; min-height:100vh;
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; padding:0 14px 44px; }
+  .wrap { max-width:620px; margin:0 auto; }
+
+  .topnav { display:flex; justify-content:flex-end; gap:8px; padding:12px 0 0; }
+  .topnav a { color:var(--muted); text-decoration:none; font-size:13px; font-weight:600;
+    border:1px solid var(--line-dk); padding:6px 11px; border-radius:9px; }
+
+  .hero { text-align:center; padding:18px 0 4px; }
+  .hero .photo { width:140px; height:140px; border-radius:50%; object-fit:cover; margin:0 auto;
+    border:3px solid var(--cream); box-shadow:0 0 0 2px #000,0 12px 30px rgba(0,0,0,.5); display:block; }
+  .hero .ph-fallback { display:flex; align-items:center; justify-content:center; font-size:54px; background:var(--bg2); }
+  .hero h1 { font-size:28px; margin:12px 0 2px; }
+  .hero .meta { color:var(--muted); font-size:14px; }
+  .badges { display:flex; justify-content:center; gap:8px; margin:12px 0 0; flex-wrap:wrap; }
+  .badge { font-size:12px; font-weight:800; padding:5px 12px; border-radius:20px; }
+  .b-lost { background:var(--scan); color:#fff; }
+  .b-safe { background:rgba(76,195,138,.18); color:#bff0d6; }
+  .b-vet { background:rgba(217,169,78,.2); color:#f0d7a0; }
+  .b-uid { background:var(--bg2); color:var(--cream); font-family:ui-monospace,Menlo,monospace; font-weight:600; }
+
+  .card { background:var(--panel); color:var(--ink); border-radius:16px; padding:18px; margin:16px 0 0; }
+  .card h2 { font-size:13px; margin:0 0 12px; color:var(--muted2); text-transform:uppercase; letter-spacing:.04em; display:flex; align-items:center; gap:8px; }
+  .card h2 .paw { width:14px; height:14px; color:var(--gold); }
+  .row { display:flex; align-items:center; gap:12px; padding:11px 0; border-top:1px solid var(--line); }
+  .row:first-of-type { border-top:0; }
+  .row .k { color:var(--muted2); font-size:13px; width:76px; flex:0 0 auto; }
+  .row .v { font-weight:600; flex:1; word-break:break-word; }
+  .row a.v { color:var(--ink); text-decoration:none; }
+  .row a.v:active { color:var(--gold); }
+  .priv { font-size:11px; color:var(--muted2); margin-top:10px; }
+
+  .lostbtn { width:100%; margin-top:14px; border:0; border-radius:12px; padding:14px; font-size:15px; font-weight:800; cursor:pointer; }
+  .lostbtn.report { background:var(--scan); color:#fff; }
+  .lostbtn.safe { background:var(--ok); color:#06120c; }
+
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  td { padding:9px 4px; border-top:1px solid var(--line); }
+  td:first-child { color:var(--ink); } td:last-child { text-align:right; color:var(--muted2); font-size:12px; }
+  .bdg { font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px; }
+  .m-match { background:rgba(76,195,138,.16); color:#1f7a50; }
+  .m-no { background:rgba(255,59,78,.14); color:#c0303c; }
+  .m-ok { background:rgba(217,169,78,.18); color:#8a6a1f; }
+  .loading, .err { text-align:center; color:var(--muted); padding:40px 0; }
+  .qrbox { display:flex; gap:16px; align-items:center; }
+  .qrbox .qimg { background:#fff; padding:10px; border-radius:12px; border:1px solid var(--line); line-height:0; }
+  .qrbox .qimg canvas, .qrbox .qimg img { display:block; width:128px; height:128px; }
+  .qrbox .qinfo { flex:1; }
+  .qrbox .qinfo p { margin:0 0 10px; color:var(--muted2); font-size:13px; }
+  .qbtn { display:inline-block; background:var(--ink); color:#fff; border:0; border-radius:10px;
+    padding:10px 14px; font-size:14px; font-weight:700; cursor:pointer; text-decoration:none; }
+  .qrbox .qimg img { display:block; width:128px; height:128px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="paw" viewBox="0 0 100 100">
+    <ellipse cx="27" cy="41" rx="9" ry="12"/><ellipse cx="44" cy="28" rx="9" ry="13"/>
+    <ellipse cx="62" cy="29" rx="9" ry="13"/><ellipse cx="79" cy="43" rx="9" ry="12"/>
+    <path d="M50 50 C32 50 22 65 27 78 C31 89 45 91 50 91 C55 91 69 89 73 78 C78 65 68 50 50 50 Z"/>
+  </symbol>
+</svg>
+
+<div class="wrap">
+  <div class="topnav"><a href="/">Home</a><a href="/scan">Scan</a><a href="/dashboard">Dashboard</a></div>
+  <div id="app"><div class="loading">Loading profile…</div></div>
+</div>
+
+<script>
+const uid = decodeURIComponent(location.pathname.split("/").filter(Boolean).pop() || "");
+let data = null;
+
+function ago(iso){ const s=Math.max(0,(Date.now()-new Date(iso).getTime())/1000);
+  if(s<60)return Math.floor(s)+"s ago"; if(s<3600)return Math.floor(s/60)+"m ago";
+  if(s<86400)return Math.floor(s/3600)+"h ago"; return Math.floor(s/86400)+"d ago"; }
+const mbadge=(o)=>o==="match"?'<span class="bdg m-match">match</span>':o==="no_match"?'<span class="bdg m-no">no match</span>':'<span class="bdg m-ok">'+o+'</span>';
+const esc=(s)=>(s==null?"":String(s)).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+
+function render() {
+  const d = data, o = d.owner || {};
+  const photo = d.photo_url
+    ? `<img class="photo" src="${d.photo_url}" alt="${esc(d.name)}">`
+    : `<div class="photo ph-fallback">${d.species==="cat"?"🐱":"🐶"}</div>`;
+  const ownerRow = (k,v,href) => v
+    ? `<div class="row"><span class="k">${k}</span>${href?`<a class="v" href="${href}">${esc(v)}</a>`:`<span class="v">${esc(v)}</span>`}</div>` : "";
+  const lost = d.is_lost;
+  document.getElementById("app").innerHTML = `
+    <div class="hero">
+      ${photo}
+      <h1>${esc(d.name)}</h1>
+      <div class="meta">${esc(d.species||"pet")}${d.breed?" · "+esc(d.breed):""}${d.color_markings?" · "+esc(d.color_markings):""}</div>
+      <div class="badges">
+        ${lost?'<span class="badge b-lost">● LOST</span>':'<span class="badge b-safe">✓ Safe at home</span>'}
+        ${d.clinic&&d.clinic.verified?'<span class="badge b-vet">Vet verified</span>':''}
+        <span class="badge b-uid">${esc(d.ella_uid)}</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><svg class="paw"><use href="#paw"/></svg> Owner contact</h2>
+      ${ownerRow("Name", o.name)}
+      ${ownerRow("Phone", o.phone, o.phone?("tel:"+o.phone.replace(/[^+0-9]/g,"")):null)}
+      ${ownerRow("Email", o.email, o.email?("mailto:"+o.email):null)}
+      ${ownerRow("Address", o.address)}
+      ${(!o.name&&!o.phone&&!o.email&&!o.address)?'<div class="row"><span class="v" style="color:var(--muted2)">No owner details on file.</span></div>':''}
+      <div class="priv">🔒 Private — shown to the owner and the registering clinic. A stranger who scans this pet sees only the “Notify owner” relay, never this page.</div>
+    </div>
+
+    <div class="card">
+      <h2><svg class="paw"><use href="#paw"/></svg> Details</h2>
+      <div class="row"><span class="k">Microchip</span><span class="v">${d.microchip_number?esc(d.microchip_number):"None"}</span></div>
+      <div class="row"><span class="k">Clinic</span><span class="v">${d.clinic&&d.clinic.name?esc(d.clinic.name):"—"}</span></div>
+      <div class="row"><span class="k">Registered</span><span class="v">${ago(d.created_at)}</span></div>
+      <button class="lostbtn ${lost?'safe':'report'}" id="lostBtn">${lost?'Mark as safe (found)':'Report '+esc(d.name)+' lost'}</button>
+    </div>
+
+    <div class="card">
+      <h2><svg class="paw"><use href="#paw"/></svg> QR collar tag</h2>
+      <div class="qrbox">
+        <div class="qimg"><img src="/api/pet/qr?uid=${encodeURIComponent(uid)}&origin=${encodeURIComponent(location.origin)}" alt="QR tag for ${esc(d.name)}"></div>
+        <div class="qinfo">
+          <p>Print this and attach it to ${esc(d.name)}'s collar. Anyone who scans it reaches a page to alert you — without seeing your contact details.</p>
+          <a class="qbtn" href="/api/pet/qr?uid=${encodeURIComponent(uid)}&origin=${encodeURIComponent(location.origin)}" download="${esc(d.ella_uid)}-qr.png">Download QR</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><svg class="paw"><use href="#paw"/></svg> Scan history</h2>
+      <table><tbody>${
+        d.history.length ? d.history.map(h=>`<tr><td>${h.action} ${mbadge(h.outcome)}${h.similarity!=null?' · '+Math.round(h.similarity*100)+'%':''}</td><td>${ago(h.at)}</td></tr>`).join("")
+        : '<tr><td style="color:var(--muted2)">No scans yet.</td></tr>'
+      }</tbody></table>
+    </div>`;
+
+  document.getElementById("lostBtn").onclick = toggleLost;
+}
+
+async function toggleLost() {
+  const btn = document.getElementById("lostBtn"); btn.disabled = true;
+  const fd = new FormData(); fd.append("ella_uid", uid); fd.append("lost", (!data.is_lost).toString());
+  try {
+    const d = await (await fetch("/api/pet/lost",{method:"POST",body:fd})).json();
+    if (d.ok) { data.is_lost = d.is_lost; render(); }
+  } catch(e) { btn.disabled=false; }
+}
+
+fetch("/api/pet?uid=" + encodeURIComponent(uid))
+  .then(r => r.ok ? r.json() : Promise.reject())
+  .then(d => { if(!d.ok) throw 0; data = d; render(); })
+  .catch(() => { document.getElementById("app").innerHTML = '<div class="err">Pet not found.</div>'; });
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Model weights and training data (large; not source)
+weights/
+data/
+data_detector/
+runs/
+*.pt
+*.pth

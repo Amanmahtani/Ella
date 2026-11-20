@@ -1,0 +1,45 @@
+# One-command demo: Postgres + pgvector + schema + the Ella demo app.
+#
+#   docker compose up --build
+#   then open http://localhost:8000
+#
+# The database is created and the migrations (001..003) are applied automatically
+# on first boot, including the anon / service_role roles.
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ella
+      POSTGRES_DB: ella
+    # Migrations run in filename order on first init. The test files
+    # (001_security.sql, 002_flows.sql) are pgTAP and are intentionally NOT here.
+    volumes:
+      - ./001_ella_init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ./002_ella_functions.sql:/docker-entrypoint-initdb.d/02_functions.sql:ro
+      - ./003_ella_security.sql:/docker-entrypoint-initdb.d/03_security.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ella"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  app:
+    build:
+      context: .
+      dockerfile: demo/Dockerfile
+    environment:
+      DATABASE_URL: "postgresql://postgres:ella@db:5432/ella"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    ports:
+      - "8000:8000"   # http  — Mac at http://localhost:8000
+      - "8443:8443"   # https — phone at https://<your-ip>:8443
+    volumes:
+      - pet_photos:/app/demo/static/pets   # keep enrolled pet photos across rebuilds
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pet_photos:
