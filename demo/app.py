@@ -180,11 +180,6 @@ def pet_detail(uid: str) -> JSONResponse:
 def stats(clinic: str | None = None) -> JSONResponse:
     conn = db.connect(role="service_role")
     with conn.cursor() as cur:
-        # Overall match rate is a system-wide figure (no-match scans have no pet
-        # and so cannot be attributed to a clinic).
-        cur.execute("select count(*), count(*) filter (where outcome='match') "
-                    "from verification_logs where action='identify'")
-        g_scans, g_matches = cur.fetchone()
         if clinic:
             cur.execute("""
                 select
@@ -194,7 +189,11 @@ def stats(clinic: str | None = None) -> JSONResponse:
                   (select count(*) from verification_logs v join pets p on p.id=v.pet_id
                      where v.action='enroll' and p.organization_id=%(c)s::uuid),
                   (select count(*) from verification_logs v join pets p on p.id=v.pet_id
-                     where p.organization_id=%(c)s::uuid and v.created_at::date=now()::date)
+                     where p.organization_id=%(c)s::uuid and v.created_at::date=now()::date),
+                  (select count(*) from verification_logs v join pets p on p.id=v.pet_id
+                     where v.action='alert_relay' and v.outcome='success' and p.organization_id=%(c)s::uuid),
+                  (select count(*) from verification_logs v join pets p on p.id=v.pet_id
+                     where v.action='identify' and p.organization_id=%(c)s::uuid)
             """, {"c": clinic})
         else:
             cur.execute("""
@@ -202,14 +201,15 @@ def stats(clinic: str | None = None) -> JSONResponse:
                   (select count(*) from pets),
                   (select count(*) from verification_logs where action='identify' and outcome='match'),
                   (select count(*) from verification_logs where action='enroll'),
-                  (select count(*) from verification_logs where created_at::date=now()::date)
+                  (select count(*) from verification_logs where created_at::date=now()::date),
+                  (select count(*) from verification_logs where action='alert_relay' and outcome='success'),
+                  (select count(*) from verification_logs where action='identify')
             """)
-        pets, found, enrollments, today = cur.fetchone()
+        pets, found, enrollments, today, reunions, scans = cur.fetchone()
     conn.close()
-    rate = round(100.0 * g_matches / g_scans, 1) if g_scans else 0.0
     return JSONResponse({
         "pets": pets, "matches": found, "enrollments": enrollments,
-        "today": today, "scans": g_scans, "match_rate": rate,
+        "today": today, "reunions": reunions, "scans": scans,
     })
 
 

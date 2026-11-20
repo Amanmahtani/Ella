@@ -105,11 +105,6 @@
     <div class="tile"><div class="n" id="tToday">—</div><div class="l">Scans today</div></div>
   </div>
 
-  <div class="meter">
-    <div class="row"><span class="lab">Overall match rate (system-wide)</span><span class="val" id="mRate">—</span></div>
-    <div class="bar"><span id="mBar" style="width:0%"></span></div>
-  </div>
-
   <div class="card">
     <h2><svg class="paw"><use href="#paw"/></svg> Recent scans</h2>
     <table>
@@ -147,7 +142,6 @@ function loadStats() {
   fetch("/api/stats" + qs()).then(r=>r.json()).then(d=>{
     $("tPets").textContent=d.pets; $("tMatches").textContent=d.matches;
     $("tEnroll").textContent=d.enrollments; $("tToday").textContent=d.today;
-    $("mRate").textContent=d.match_rate+"%"; $("mBar").style.width=d.match_rate+"%";
   }).catch(()=>{});
 }
 function loadScans() {

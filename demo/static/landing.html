@@ -85,7 +85,7 @@
     <div class="stats">
       <div><div class="n" id="sPets">—</div><div class="l">Pets</div></div>
       <div><div class="n" id="sScans">—</div><div class="l">Scans</div></div>
-      <div><div class="n" id="sRate">—</div><div class="l">Match rate</div></div>
+      <div><div class="n" id="sReunions">—</div><div class="l">Reunions</div></div>
     </div>
 
     <a class="cta" href="/scan">Get Started  →</a>
@@ -115,7 +115,7 @@
   fetch("/api/stats").then(r=>r.json()).then(d=>{
     document.getElementById("sPets").textContent=d.pets;
     document.getElementById("sScans").textContent=d.scans;
-    document.getElementById("sRate").textContent=d.match_rate+"%";
+    document.getElementById("sReunions").textContent=d.reunions;
   }).catch(()=>{});
 </script>
 </body>
