@@ -57,6 +57,14 @@
   .m-no { background:rgba(255,59,78,.14); color:#c0303c; }
   .m-ok { background:rgba(217,169,78,.18); color:#8a6a1f; }
   .loading, .err { text-align:center; color:var(--muted); padding:40px 0; }
+  .qrbox { display:flex; gap:16px; align-items:center; }
+  .qrbox .qimg { background:#fff; padding:10px; border-radius:12px; border:1px solid var(--line); line-height:0; }
+  .qrbox .qimg canvas, .qrbox .qimg img { display:block; width:128px; height:128px; }
+  .qrbox .qinfo { flex:1; }
+  .qrbox .qinfo p { margin:0 0 10px; color:var(--muted2); font-size:13px; }
+  .qbtn { display:inline-block; background:var(--ink); color:#fff; border:0; border-radius:10px;
+    padding:10px 14px; font-size:14px; font-weight:700; cursor:pointer; text-decoration:none; }
+  .qrbox .qimg img { display:block; width:128px; height:128px; }
 </style>
 </head>
 <body>
@@ -119,6 +127,17 @@ function render() {
       <div class="row"><span class="k">Clinic</span><span class="v">${d.clinic&&d.clinic.name?esc(d.clinic.name):"—"}</span></div>
       <div class="row"><span class="k">Registered</span><span class="v">${ago(d.created_at)}</span></div>
       <button class="lostbtn ${lost?'safe':'report'}" id="lostBtn">${lost?'Mark as safe (found)':'Report '+esc(d.name)+' lost'}</button>
+    </div>
+
+    <div class="card">
+      <h2><svg class="paw"><use href="#paw"/></svg> QR collar tag</h2>
+      <div class="qrbox">
+        <div class="qimg"><img src="/api/pet/qr?uid=${encodeURIComponent(uid)}&origin=${encodeURIComponent(location.origin)}" alt="QR tag for ${esc(d.name)}"></div>
+        <div class="qinfo">
+          <p>Print this and attach it to ${esc(d.name)}'s collar. Anyone who scans it reaches a page to alert you — without seeing your contact details.</p>
+          <a class="qbtn" href="/api/pet/qr?uid=${encodeURIComponent(uid)}&origin=${encodeURIComponent(location.origin)}" download="${esc(d.ella_uid)}-qr.png">Download QR</a>
+        </div>
+      </div>
     </div>
 
     <div class="card">

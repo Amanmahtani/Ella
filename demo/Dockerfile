@@ -15,7 +15,7 @@ WORKDIR /app
 # onto arm64. Pinning keeps the image small and CPU-only, and the arm64 wheel is
 # ~96 MB. DINOv2 via transformers runs fine on this version.
 RUN pip install --no-cache-dir \
-      "torch==2.6.0" transformers numpy pillow opencv-python-headless \
+      "torch==2.6.0" transformers numpy pillow opencv-python-headless qrcode \
       "psycopg[binary]" fastapi "uvicorn[standard]" python-multipart
 
 # Bake the DINOv2 weights into the image so the first request is fast.

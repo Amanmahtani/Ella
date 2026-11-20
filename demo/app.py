@@ -13,12 +13,14 @@ Run:
 from __future__ import annotations
 
 import os
+import secrets
+import string
 import sys
 import tempfile
 
 import numpy as np
 from fastapi import FastAPI, File, Form, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 # Reuse the real pipeline in ../model
@@ -361,6 +363,97 @@ async def set_lost(ella_uid: str = Form(...), lost: str = Form(...)) -> JSONResp
     if not n:
         return JSONResponse({"ok": False, "error": "unknown pet"}, status_code=404)
     return JSONResponse({"ok": True, "is_lost": is_lost})
+
+
+def _new_tag_code() -> str:
+    """Unique tag code matching the schema's ^[A-Za-z0-9]{6,32}$ constraint."""
+    alpha = string.ascii_uppercase + string.digits
+    return "ELLA" + "".join(secrets.choice(alpha) for _ in range(8))
+
+
+def _ensure_tag(cur, ella_uid: str) -> str | None:
+    """Return the pet's active tag code, creating one if it has none."""
+    cur.execute("select id, organization_id from pets where ella_uid=%s", (ella_uid,))
+    r = cur.fetchone()
+    if not r:
+        return None
+    pet_id, org_id = r
+    cur.execute("select tag_code from qr_tags where pet_id=%s and status='active' limit 1", (pet_id,))
+    t = cur.fetchone()
+    if t:
+        return t[0]
+    code = _new_tag_code()
+    cur.execute(
+        "insert into qr_tags (tag_code, pet_id, organization_id, status, activated_at) "
+        "values (%s, %s, %s, 'active', now())",
+        (code, pet_id, org_id),
+    )
+    return code
+
+
+@app.post("/api/pet/tag")
+async def ensure_tag(ella_uid: str = Form(...)) -> JSONResponse:
+    conn = db.connect(role="service_role")
+    with conn.cursor() as cur:
+        code = _ensure_tag(cur, ella_uid)
+    if code is None:
+        conn.close()
+        return JSONResponse({"ok": False, "error": "unknown pet"}, status_code=404)
+    conn.commit()
+    conn.close()
+    return JSONResponse({"ok": True, "tag_code": code})
+
+
+@app.get("/api/pet/qr")
+def pet_qr(uid: str, origin: str = "") -> Response:
+    """A PNG QR code encoding this pet's finder URL (origin/t/<tag>). Generated
+    server-side, so no external CDN and it works offline. `origin` is the
+    browser's own origin, so the QR points at whatever host the owner is on."""
+    import io
+
+    import qrcode
+
+    conn = db.connect(role="service_role")
+    with conn.cursor() as cur:
+        code = _ensure_tag(cur, uid)
+    if code is None:
+        conn.close()
+        return JSONResponse({"ok": False, "error": "unknown pet"}, status_code=404)
+    conn.commit()
+    conn.close()
+    img = qrcode.make(f"{origin}/t/{code}")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return Response(content=buf.getvalue(), media_type="image/png",
+                    headers={"Cache-Control": "no-store"})
+
+
+@app.get("/t/{code}")
+def tag_page(code: str) -> FileResponse:
+    return _page("finder.html")
+
+
+@app.get("/api/tag")
+def tag_lookup(code: str) -> JSONResponse:
+    """Finder-safe lookup for a scanned QR tag. Runs as anon via public_lookup_tag,
+    so it returns NO owner PII — just the pet and the relay token."""
+    conn = db.connect(role="anon")
+    with conn.cursor() as cur:
+        cur.execute(
+            "select name, ella_uid, species, breed, photo_url, is_lost, alert_relay_token "
+            "from public_lookup_tag(%s::text)",
+            (code,),
+        )
+        r = cur.fetchone()
+    conn.commit()
+    conn.close()
+    if not r:
+        return JSONResponse({"ok": True, "found": False})
+    return JSONResponse({
+        "ok": True, "found": True,
+        "name": r[0], "ella_uid": r[1], "species": r[2], "breed": r[3],
+        "photo_url": r[4], "is_lost": r[5], "relay_token": r[6],
+    })
 
 
 @app.post("/api/relay")
