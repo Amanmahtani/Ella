@@ -14,8 +14,14 @@ WORKDIR /app
 # entirely. torch 2.15 dropped that gate and drags ~5 GB of unused GPU libraries
 # onto arm64. Pinning keeps the image small and CPU-only, and the arm64 wheel is
 # ~96 MB. DINOv2 via transformers runs fine on this version.
+# CPU-only torch keeps the image small on any host. The cpu index is CPU-only on
+# both x86_64 (cloud) and arm64 (Apple Silicon); fall back to PyPI if the cpu
+# index lacks a wheel for the build arch (PyPI torch 2.6.0 also has no CUDA deps
+# on arm64, so the fallback stays slim on a Mac).
+RUN pip install --no-cache-dir "torch==2.6.0" --index-url https://download.pytorch.org/whl/cpu \
+      || pip install --no-cache-dir "torch==2.6.0"
 RUN pip install --no-cache-dir \
-      "torch==2.6.0" transformers numpy pillow opencv-python-headless qrcode \
+      transformers numpy pillow opencv-python-headless qrcode \
       "psycopg[binary]" fastapi "uvicorn[standard]" python-multipart
 
 # Bake the DINOv2 weights into the image so the first request is fast.

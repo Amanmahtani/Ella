@@ -39,7 +39,32 @@ Notes:
 
 ---
 
-## Path B — Real cloud deploy (Supabase + Render)
+## Path B (recommended) — Always-on demo on Railway
+
+One platform hosts both the app and the database. Always on (no cold start),
+cheap (~$5-10/month usage), deploys straight from GitHub. Do this from any
+computer with a browser; you do not need your Mac.
+
+1. Go to railway.app and sign in with GitHub.
+2. **New Project -> Deploy from GitHub repo** -> pick `Amanmahtani/Ella`.
+   Railway reads `railway.json` and builds from `demo/Dockerfile`.
+3. In the project, **New -> Database -> Add PostgreSQL**. Railway creates a
+   Postgres instance (its superuser role lets the migrations create the
+   anon/service_role roles, and pgvector is available).
+4. Open the **app service -> Variables** and add:
+   - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`  (Railway autofills the real value)
+   - `RUN_MIGRATIONS` = `1`
+   - `HF_HUB_DISABLE_TELEMETRY` = `1`
+5. The app redeploys. On boot it applies migrations 001..003, then starts.
+6. **Settings -> Networking -> Generate Domain** gives you a public link like
+   `https://ella-production.up.railway.app`. That's your demo environment.
+
+First build takes a few minutes (installs torch + the model). After that it
+stays up. To update the demo, just push to the branch and Railway redeploys.
+
+---
+
+## Path C — Real cloud deploy (Supabase + Render)
 
 The app runs in the cloud 24/7. Two pieces: a **database** (Supabase) and the
 **app** (Render).
@@ -90,5 +115,6 @@ Ella's schema was written in Supabase's style (it uses the same `anon` /
 
 ## Which should I use?
 
-- Showing someone this week → **Path A** (instant link, Mac on).
-- A demo that's always up and you send around → **Path B** (Supabase + Render).
+- Showing someone this week, Mac on → **Path A** (instant tunnel link).
+- An always-on demo environment you send around → **Path B** (Railway).
+- Most production-like / separate managed DB → **Path C** (Supabase + Render).
